@@ -81,9 +81,13 @@ class DeviceClock {
     required this.quality,
   });
 
+  /// Relógio de parede do aparelho, exatamente como lido. Nunca corrigido.
   final DateTime detectedAt;
-  final int elapsedRealtimeMs;
-  final String bootId;
+
+  /// `null` quando a plataforma não fornece. ALINHAR: o rascunho
+  /// `presenca-v1` exige os dois campos; o app não os inventa.
+  final int? elapsedRealtimeMs;
+  final String? bootId;
   final String timeZone;
   final ClockQuality quality;
 

@@ -1,39 +1,69 @@
 import '../domain/presence_event.dart';
 import '../domain/queued_event.dart';
 
+/// Lote reservado. O [token] identifica ESTA reserva: só quem a detém pode
+/// concluir ou devolver os eventos (evita que um envio atrasado, de outro
+/// isolate, mexa num lote já reservado por outro).
+class LeasedBatch {
+  const LeasedBatch(this.token, this.events);
+  final String token;
+  final List<QueuedEvent> events;
+}
+
+/// Parada persistida do envio. Só é retirada por [EventQueue.clearHalt],
+/// chamada explicitamente (nova autenticação, atualização do app…).
+enum DeliveryHaltReason {
+  unauthenticated,
+  forbidden,
+  invalidEnvelope,
+  payloadTooLargeSingle,
+  internalDefect,
+}
+
+class DeliveryHalt {
+  const DeliveryHalt(this.reason, this.at, {this.detail});
+  final DeliveryHaltReason reason;
+  final DateTime at;
+  final String? detail;
+}
+
 /// Fila local (outbox). Toda operação é transacional.
 abstract interface class EventQueue {
   /// Atribui `eventId` e `installationSequence`, congela o payload e faz o
-  /// commit. Só retorna depois do commit: quem chama pode então informar
-  /// "registrado no aparelho".
-  QueuedEvent append(PresenceEventDraft draft, {required DateTime now});
+  /// commit. Só retorna depois do commit. [captureFlags] é contexto LOCAL
+  /// (não entra no payload do contrato).
+  QueuedEvent append(PresenceEventDraft draft,
+      {required DateTime now, Set<String> captureFlags = const {}});
 
-  /// Reserva até [max] eventos prontos para envio (ordem de sequência),
-  /// marcando-os como `sending` com lease até [leaseUntil].
-  List<QueuedEvent> lease({
+  LeasedBatch lease({
     required int max,
     required DateTime now,
     required DateTime leaseUntil,
   });
 
-  /// Aplica os resultados do servidor e devolve ao estado `savedLocally`
-  /// (com próxima tentativa) os eventos do lote que ficaram sem resultado.
   void settle({
-    required List<String> leasedIds,
+    required String token,
     required Map<String, EventOutcome> outcomes,
     required DateTime retryAt,
   });
 
-  /// Devolve o lote inteiro para a fila sem alterar o conteúdo.
-  void release(List<String> leasedIds, {required DateTime retryAt});
+  void release(String token, {required DateTime retryAt});
 
-  /// Leases vencidos (processo morto no meio do envio) voltam para a fila.
   int recoverExpiredLeases(DateTime now);
 
   List<QueuedEvent> all();
 
-  /// Data do próximo envio agendado, se houver pendentes.
   DateTime? nextAttemptAt();
+
+  /// Contexto local gravado com o evento (fora do payload).
+  Set<String> captureFlagsOf(String eventId);
+
+  // Estado de entrega persistido (sobrevive a reinício).
+  int consecutiveFailures();
+  void setConsecutiveFailures(int n);
+  DeliveryHalt? deliveryHalt();
+  void haltDelivery(DeliveryHalt halt);
+  void clearHalt();
 }
 
 enum OutcomeKind { accepted, duplicate, conflict, rejected }
@@ -54,7 +84,6 @@ class EventOutcome {
   final String? code;
 }
 
-/// Resposta do servidor a um lote.
 sealed class BatchResponse {
   const BatchResponse();
 }
@@ -74,28 +103,29 @@ final class BatchFailure extends BatchResponse {
 }
 
 enum BatchFailureReason {
-  /// Sem resposta / rede / 503 / 5xx: reenviar o MESMO lote com backoff.
-  transient,
-
-  /// 429: respeitar Retry-After.
+  /// 503 / 5xx com resposta: reenviar o MESMO lote com backoff.
+  serverUnavailable,
   rateLimited,
-
-  /// 413: lote grande demais; reduzir.
   payloadTooLarge,
-
-  /// 401: sessão inválida. Eventos ficam no aparelho (política D-DEV-2).
   unauthenticated,
-
-  /// 403 installation_revoked / installation_not_owned.
   forbidden,
-
-  /// 400 envelope fora do contrato: defeito do app; não insistir.
   invalidEnvelope,
 }
 
+/// Falha de transporte: sem resposta conhecida (o servidor pode ou não ter
+/// feito commit). O adaptador HTTP deve converter erros de rede/timeout/TLS
+/// nesta exceção. QUALQUER outra exceção é tratada como defeito interno.
+final class TransportException implements Exception {
+  const TransportException(this.kind, [this.message]);
+  final TransportFailure kind;
+  final String? message;
+  @override
+  String toString() => 'TransportException(${kind.name})';
+}
+
+enum TransportFailure { network, timeout, tls }
+
 /// Cliente do endpoint `POST /v1/me/presence-events/batch` (rascunho).
-/// Uma exceção lançada significa "sem resposta conhecida" (inclui timeout
-/// depois do commit no servidor) e é tratada como [BatchFailureReason.transient].
 abstract interface class PresenceApi {
   Future<BatchResponse> submitBatch(List<String> payloadsJson);
 }

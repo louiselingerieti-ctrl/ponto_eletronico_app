@@ -1,4 +1,5 @@
-import 'package:presenca_core/presenca_core.dart';
+import 'package:presenca_core/presenca_core_native.dart';
+import 'package:presenca_core/presenca_lab.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';

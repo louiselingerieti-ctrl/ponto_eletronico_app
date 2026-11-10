@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
@@ -15,12 +14,11 @@ import '../application/ports.dart';
 class SimulatedPresenceServer implements PresenceApi {
   SimulatedPresenceServer({
     required Set<String> ownedEmploymentLinks,
-    required DateTime Function() clock,
-  })  : _owned = ownedEmploymentLinks,
-        _clock = clock;
+    required this.clock,
+  }) : _owned = ownedEmploymentLinks;
 
   final Set<String> _owned;
-  final DateTime Function() _clock;
+  final DateTime Function() clock;
   static const _uuid = Uuid();
 
   /// eventId → registro gravado ("commit").
@@ -40,9 +38,9 @@ class SimulatedPresenceServer implements PresenceApi {
 
     switch (fault) {
       case NetworkDown():
-        throw const SocketLikeException('rede indisponível (simulado)');
+        throw const TransportException(TransportFailure.network, 'simulado');
       case FailBeforeCommit():
-        return const BatchFailure(BatchFailureReason.transient); // 503
+        return const BatchFailure(BatchFailureReason.serverUnavailable); // 503
       case RateLimited(:final retryAfter):
         return BatchFailure(BatchFailureReason.rateLimited, retryAfter: retryAfter);
       case Unauthenticated():
@@ -50,37 +48,37 @@ class SimulatedPresenceServer implements PresenceApi {
       case InstallationRevoked():
         return const BatchFailure(BatchFailureReason.forbidden,
             code: 'installation_revoked');
+      case InvalidEnvelope():
+        return const BatchFailure(BatchFailureReason.invalidEnvelope,
+            code: 'validation_failed');
+      case AdapterBug():
+        throw StateError('defeito simulado no adaptador');
       case _:
     }
     if (payloadsJson.length > 100) {
       return const BatchFailure(BatchFailureReason.payloadTooLarge);
     }
 
-    // "Transação": cada item independente (savepoint por item).
-    final outcomes = <EventOutcome>[];
-    for (final raw in payloadsJson) {
-      outcomes.add(_receive(raw));
-    }
+    final outcomes = <EventOutcome>[for (final raw in payloadsJson) _receive(raw)];
 
     switch (fault) {
       case TimeoutAfterCommit():
-        throw TimeoutException('timeout depois do commit (simulado)');
+        throw const TransportException(TransportFailure.timeout, 'após commit (simulado)');
       case PartialAck(:final omit):
         return BatchResults(
             [for (final o in outcomes) if (!omit.contains(o.eventId)) o]);
+      case AckWithoutReceipt():
+        return BatchResults([
+          for (final o in outcomes)
+            EventOutcome(eventId: o.eventId, kind: o.kind, code: o.code),
+        ]);
       case _:
         return BatchResults(outcomes);
     }
   }
 
   EventOutcome _receive(String raw) {
-    final Map<String, Object?> e;
-    try {
-      e = (jsonDecode(raw) as Map).cast<String, Object?>();
-    } catch (_) {
-      return const EventOutcome(
-          eventId: '', kind: OutcomeKind.rejected, code: 'invalid_event');
-    }
+    final e = (jsonDecode(raw) as Map).cast<String, Object?>();
     final id = e['eventId'] as String;
     final seq = e['installationSequence'] as int;
     final hash = _canonical(e);
@@ -92,7 +90,7 @@ class SimulatedPresenceServer implements PresenceApi {
             eventId: id, kind: OutcomeKind.duplicate,
             receiptId: existing.receiptId, receivedAt: existing.receivedAt);
       }
-      conflictIncidents.add(id); // original preservado
+      conflictIncidents.add(id);
       return EventOutcome(eventId: id, kind: OutcomeKind.conflict,
           code: 'content_mismatch');
     }
@@ -113,8 +111,8 @@ class SimulatedPresenceServer implements PresenceApi {
     if (seq > maxSeq + 1) sequenceGaps.add((maxSeq, seq));
 
     final rec = StoredEvent(
-      canonical: hash, receiptId: _uuid.v4(), receivedAt: _clock(),
-      sequence: seq, body: e);
+        canonical: hash, receiptId: _uuid.v4(), receivedAt: clock(),
+        sequence: seq, body: e);
     stored[id] = rec;
     _seqOwner[seq] = id;
     return EventOutcome(eventId: id, kind: OutcomeKind.accepted,
@@ -167,6 +165,10 @@ final class PartialAck extends Fault {
   final Set<String> omit;
 }
 
+final class AckWithoutReceipt extends Fault {
+  const AckWithoutReceipt();
+}
+
 final class RateLimited extends Fault {
   const RateLimited(this.retryAfter);
   final Duration retryAfter;
@@ -180,9 +182,10 @@ final class InstallationRevoked extends Fault {
   const InstallationRevoked();
 }
 
-class SocketLikeException implements Exception {
-  const SocketLikeException(this.message);
-  final String message;
-  @override
-  String toString() => 'SocketLikeException: $message';
+final class InvalidEnvelope extends Fault {
+  const InvalidEnvelope();
+}
+
+final class AdapterBug extends Fault {
+  const AdapterBug();
 }
