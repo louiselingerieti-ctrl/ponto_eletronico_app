@@ -1,0 +1,10 @@
+.dart_tool/
+build/
+.packages
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+prototipos/

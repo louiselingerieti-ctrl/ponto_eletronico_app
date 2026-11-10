@@ -1,0 +1,27 @@
+name: presenca_core
+description: >-
+  Núcleo do app pessoal de presença (Dart puro): domínio, casos de uso, fila
+  local persistente e adaptadores. Sem Flutter e sem integração nativa.
+  PROVA DE CONCEITO: não gera marcação oficial e não fala com o servidor real.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.7
+
+# Versões fixadas (sem ^): fila, cifra e protocolo precisam ser reproduzíveis.
+dependencies:
+  meta: 1.19.0
+  sqlite3: 3.9.1
+  uuid: 4.6.0
+
+dev_dependencies:
+  lints: 6.1.0
+  test: 1.31.1
+
+hooks:
+  user_defines:
+    sqlite3:
+      # SQLite3MultipleCiphers: cifra o arquivo inteiro. Mesma escolha já
+      # avaliada no APP_TABLET; aqui só a viabilidade é verificada (ver testes).
+      source: sqlite3mc
