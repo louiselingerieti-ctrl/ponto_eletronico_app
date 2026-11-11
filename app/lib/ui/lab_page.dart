@@ -4,6 +4,7 @@ import 'package:presenca_core/presenca_lab.dart';
 import '../lab/lab_controller.dart';
 import '../lab/lab_scenario.dart';
 import 'event_tile.dart';
+import 'lab_copy.dart';
 import 'tokens.dart';
 import 'widgets.dart';
 
@@ -103,16 +104,16 @@ class _Header extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 640),
           child: Text(
             'Simula o caminho de um evento de presença: do aparelho até o servidor e a '
-            'avaliação. Os dados são fictícios e nada sai deste navegador.',
+            'avaliação. Os dados são fictícios e nada sai ${LabCopy.where}.',
             style: TextStyle(color: context.lab.ink2, fontSize: 15, height: 1.5),
           ),
         ),
         const SizedBox(height: 10),
-        const Wrap(spacing: 8, runSpacing: 8, children: [
-          Chip2('Memória do navegador: recarregar a página apaga tudo'),
-          Chip2('Servidor simulado, não é o backend'),
-          Chip2('Plataforma de geofence simulada'),
-          Chip2('Sem localização real'),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          Chip2(LabCopy.memoryChip),
+          const Chip2('Servidor simulado, não é o backend'),
+          const Chip2('Plataforma de geofence simulada'),
+          const Chip2('Sem localização real'),
         ]),
       ],
     );
@@ -171,8 +172,8 @@ class _ConfigPanel extends StatelessWidget {
       title: 'Configuração ${LabScenario.configRevision}',
       children: [
         StepTrack(cells, semanticsLabel: 'Etapas da configuração'),
-        Note(const TextSpan(children: [
-          TextSpan(text: 'Aqui, "persistida" significa guardada na memória do navegador, sem cifra. '
+        Note(TextSpan(children: [
+          TextSpan(text: 'Aqui, "persistida" significa guardada ${LabCopy.memoryPlace}, sem cifra. '
               '"Aplicada" é uma confirmação da '),
           TextSpan(text: 'plataforma simulada', style: TextStyle(fontWeight: FontWeight.w700)),
           TextSpan(text: '. Nenhum geofence real é registrado.'),
