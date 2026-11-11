@@ -1,0 +1,49 @@
+name: casa_futuro_colaborador
+description: >-
+  App do colaborador Casa do Futuro - DEMONSTRAÇÃO VISUAL (Etapa 1 do
+  relatório v1.0). Dados fictícios e adaptadores simulados; não autentica,
+  não usa localização real, não fala com o backend e não gera ponto oficial.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+  flutter: 3.47.9
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Do próprio SDK: textos pt-BR dos seletores de data/hora.
+  flutter_localizations:
+    sdk: flutter
+  # Domínio e fila (presenca_core) + adaptadores SIMULADOS (presenca_lab).
+  # O armazenamento cifrado (presenca_core_native) entra só na Etapa 4.
+  presenca_core:
+    path: ../core
+  # Já usado pelo core (mesma versão): chave idempotente das solicitações.
+  uuid: 4.6.0
+  # Integração real com o backend (só em lib/integration/): cliente HTTP e
+  # armazenamento seguro do SO para o cookie de sessão (nunca a senha).
+  # flutter_secure_storage: mesma versão já usada no APP_TABLET.
+  http: 1.6.0
+  flutter_secure_storage: 11.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/logo.png
+  fonts:
+    # Licença OFL (assets/fonts/PublicSans-OFL.txt). Substituição proposta
+    # da Segoe UI do protótipo; comparar visualmente antes de fechar.
+    - family: PublicSans
+      fonts:
+        - asset: assets/fonts/PublicSans-wght.ttf
+    # lucide-static 0.460.0, licença ISC (assets/icons/LUCIDE-LICENSE.txt).
+    - family: Lucide
+      fonts:
+        - asset: assets/icons/lucide.ttf
