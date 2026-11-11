@@ -74,6 +74,10 @@ enum AuthFailure {
   googleNotLinked(
       'Não foi possível vincular esta conta do Google ao seu cadastro. Entre com e-mail e senha.'),
   googleUnavailable('Não foi possível entrar com o Google agora. Entre com e-mail e senha.'),
+  googleNotConfigured(
+      'O Google não liberou o login para este aplicativo. É um ajuste de configuração: avise quem administra o sistema e, por enquanto, entre com e-mail e senha.'),
+  googleNotCompleted(
+      'O login com Google não foi concluído. Se você escolheu uma conta e voltou para esta tela, o Google não liberou este aplicativo: entre com e-mail e senha e avise quem administra o sistema.'),
   currentPasswordWrong('A senha temporária não confere.'),
   weakPassword('A nova senha precisa ter de 12 a 128 caracteres.'),
   passwordChangeUnavailable(
@@ -121,7 +125,10 @@ abstract interface class AuthGateway {
 /// lib/integration/google (plugin google_sign_in); nos testes, um falso.
 abstract interface class GoogleIdTokenSource {
   /// Abre o seletor de contas do Google e devolve o ID token.
-  /// null = a pessoa desistiu. Falha do Google → AuthException(googleUnavailable).
+  /// null = o Android informou "cancelado": a pessoa desistiu OU o Google
+  /// recusou o app por configuração (o Android não diferencia os dois).
+  /// Recusa reconhecível → AuthException(googleNotConfigured); outras falhas
+  /// → AuthException(googleUnavailable).
   Future<String?> idToken();
 
   /// Esquece a conta escolhida, para o seletor aparecer de novo na próxima vez.

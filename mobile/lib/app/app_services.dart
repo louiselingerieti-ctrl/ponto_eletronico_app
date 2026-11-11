@@ -104,9 +104,10 @@ class AppServices extends ChangeNotifier {
     }
   }
 
-  /// Entra com a conta do Google do aparelho. Desistir no seletor de contas
-  /// não é erro. Se a conta escolhida não puder entrar, ela é esquecida para
-  /// a pessoa poder escolher outra.
+  /// Entra com a conta do Google do aparelho. Se o Google devolver
+  /// "cancelado", a tela avisa que o login não foi concluído. Se a conta
+  /// escolhida não puder entrar, ela é esquecida para a pessoa poder escolher
+  /// outra.
   Future<bool> signInWithGoogle() async {
     final a = auth;
     final g = google;
@@ -117,7 +118,12 @@ class AppServices extends ChangeNotifier {
     var entered = false;
     try {
       final token = await g.idToken();
-      if (token == null) return false;
+      if (token == null) {
+        // "Cancelado" pode ser desistência ou recusa do Google por
+        // configuração; o aviso cobre os dois sem afirmar o que não se sabe.
+        _failure = AuthFailure.googleNotCompleted;
+        return false;
+      }
       entered = await _afterAuth(await a.signInWithGoogleIdToken(token));
       return entered;
     } on AuthException catch (e) {
