@@ -8,7 +8,9 @@ plugins {
 
 android {
     namespace = "dev.demo.casa_futuro_colaborador"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 23 exige compilar com o SDK 37 ou mais novo.
+    // Só muda contra qual SDK se compila; minSdk e targetSdk continuam os do Flutter.
+    compileSdk = maxOf(flutter.compileSdkVersion, 37)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
