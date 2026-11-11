@@ -95,27 +95,88 @@ pelo `app/` por `path:`. Não há monorepo nem ferramenta extra.
 | Persistir antes de dizer "salvo no aparelho" | `append` faz `BEGIN IMMEDIATE … COMMIT` e só retorna depois do commit, com WAL e `synchronous=FULL` |
 | ID estável, sequência e versão | `eventId` UUIDv4, `installationSequence` e `schemaVersion` são atribuídos na mesma transação. O payload é congelado na gravação. |
 | Idempotência e conflito | O reenvio manda os mesmos bytes. `duplicate` traz o recibo original; `conflict` e `rejected` nunca são reenviados. |
-| Retry | Backoff exponencial com jitter, teto de 30 min (valor provisório), `Retry-After` como piso e redução do lote no 413 |
+| Retry | Backoff exponencial com jitter, teto de 30 min (valor provisório), `Retry-After` como piso e redução do lote no 413. Só para falha transitória (ver o incremento 2). |
 | Recebido só depois do ACK | O estado `received` só nasce de `accepted` ou `duplicate`. Timeout e 503 voltam para `savedLocally`. |
 | Estados distintos | `savedLocally → sending → received / conflict / rejected`. "Avaliado" virá do `GET /v1/me/presence-events` e não é estado de entrega. |
 | Três instantes | `observedAt` só quando o SO informa (`observedAtSource: none` quando não). `detectedAt` vem do app. `receivedAt` vem do servidor. Nenhum instante de cruzamento é inventado. |
 | Reinício | Um lease vencido volta para a fila, e a sequência continua sem reutilização |
 | Cifra | Com SQLite3MultipleCiphers, o arquivo não abre sem a chave nem com a chave errada, e o conteúdo não aparece em claro. **Só no desktop.** |
 
+### Incremento 2 (10/11/2026; ainda não commitado)
+
+| Requisito | Como |
+|---|---|
+| Cifra obrigatória | `LocalStore.open` é a única entrada. Ela exige `obtainKey` e confere `sqlite3mc_version()` e `PRAGMA cipher`. Recusa chave errada, arquivo existente em claro, base em memória ou URI, e confere depois que o cabeçalho gravado não está em claro. Não existe parâmetro para desligar a cifra. Os testes usam a mesma base cifrada, com chave sintética (`test/support.dart`). |
+| Classes de falha | `transient` (exceção `TransportException`, 503, 429, 413 redutível) gera nova tentativa. `authOrPermission` (401/403), `contractRejection` (400, 413 com um só evento) e `internalDefect` (qualquer outra exceção) **param o envio**. A parada é gravada e só sai com `resume()` explícito. Uma resposta 200 fora do contrato vira anomalia relatada e o evento não é dado como recebido. |
+| Backoff e concorrência | O contador de falhas fica gravado. Cada reserva de lote tem um `lease_token`: só quem tem o token conclui ou devolve aquele lote. Foi testado com duas conexões na mesma base. |
+| Relógio | `assessClock` só devolve `trusted` quando há referência do servidor, o boot é o mesmo, o monotônico é consistente, a referência é recente e o desvio mais a ida e volta cabem na tolerância. Nos outros casos devolve `uncertain` ou `drift_suspected`. `detectedAt`, o monotônico e o `bootId` são preservados como lidos, e ficam `null` quando ausentes. |
+| Configuração | O ciclo é **recebida** (só em memória) → **persistida** (commit cifrado) → **aplicada** (a plataforma confirma todas as áreas vigentes; o evento `config_applied` sai no mesmo commit). Também há falha de aplicação, substituição (resposta mais antiga é ignorada; a mesma revisão com outro conteúdo é recusada), vencimento (evento `config_expired`, uma vez) e revogação. |
+| Imutabilidade | Triggers do SQLite impedem alterar `event_id`, `seq` ou `payload` e impedem apagar eventos. |
+| Atribuição | O vínculo, a revisão e a área vêm do registro do geofence. Uma área ou revisão desconhecida é recusada, e nada é associado a todos os vínculos. |
+
+### Incremento 3, parte 1: separação web e nativo (sem commit)
+
+O núcleo passou a ter três pontos de entrada, e os casos de uso dependem só
+de portas (`LocalPersistence` e `ConfigRepository`):
+
+| Biblioteca | Conteúdo | Compila para a web |
+|---|---|---|
+| `presenca_core.dart` | Domínio e casos de uso, sem nenhum armazenamento | Sim |
+| `presenca_core_native.dart` | `LocalStore`: SQLite **sempre cifrado**, sem mudança | Não (`dart:io`, FFI) |
+| `presenca_lab.dart` | `InMemoryLabPersistence` (em memória, **sem cifra**, `isEncryptedAtRest = false`) e `SimulatedPresenceServer` | Sim |
+
+Verificações:
+
+- `test/persistence_contract_test.dart` roda os mesmos cenários nas duas
+  persistências.
+- `test/architecture_test.dart` impede que domínio, aplicação ou laboratório
+  importem código nativo, e impede que o barril principal exporte
+  armazenamento ou simulação.
+- `dart test -p chrome test/web` roda o fluxo do laboratório **dentro do
+  Chrome**.
+
+Nada disso valida SQLite cifrado, Keystore, geofence ou segundo plano no
+navegador.
+
+### Incremento 3, parte 2: laboratório Flutter Web (sem commit)
+
+O protótipo e a identidade visual do laboratório foram aprovados em
+10/11/2026. A identidade vale **só para o laboratório**, não para o produto.
+
+- `app/` foi criado só para web, com a dependência
+  `presenca_core: path: ../core`. Ele importa apenas `presenca_lab`.
+- `SimulatedGeofencePlatform` registra áreas só na memória e monta os
+  callbacks sintéticos, sem leitura de localização.
+- O controlador do laboratório injeta as falhas de rede ausente, 503 e ACK
+  parcial no servidor simulado.
+- A avaliação é escolhida à mão e é fictícia. Nenhuma marcação de jornada é
+  criada.
+- As fontes (licença OFL) são empacotadas no app.
+- Testes: 15 (controlador, widget em 1400, 800 e 390 px, guarda de
+  arquitetura). `flutter build web` compila.
+- Esta versão não simula vencimento, revogação nem sessão expirada. As
+  escolhas de D-CFG-1, D-LINK-1 e D-AUTH-2 aparecem, mas ainda não têm efeito
+  visível.
+
 ### Limitações conhecidas do núcleo (registradas, não corrigidas)
 
-- **Sem token de lease.** Se dois isolates enviarem ao mesmo tempo depois de
-  um lease vencer, o mesmo evento pode sair duas vezes. Isso não corrompe nada
-  (o servidor responde `duplicate`), mas gasta rede. A correção é um
-  `lease_token` por lote. Fica para o incremento do agendamento em segundo
-  plano.
-- O contador de falhas seguidas fica em memória e zera quando o app reinicia.
-- A cifra é **opcional** no adaptador. No app ela deve ser obrigatória, com a
-  chave gerada e guardada no Keystore ou Keychain via armazenamento seguro.
-  Essa parte ainda não foi implementada.
-- Eventos `received` nunca são apagados: a retenção local está pendente
-  (D-PRIV).
-- Qualidade do relógio: o avaliador não foi implementado.
+- A cifra só foi verificada no **Windows**. No Android, a chave no Keystore
+  (`KeyProvider`) e o funcionamento do SQLite3MultipleCiphers não foram
+  testados.
+- O vencimento da configuração e as áreas vigentes usam o **relógio do
+  aparelho**, que pode ter sido alterado. O núcleo grava a qualidade do
+  relógio, e o servidor reavalia (`config_expired`).
+- Uma resposta 200 com anomalia repetida é reenviada indefinidamente, com
+  backoff limitado a 30 min. Não há limite de tentativas: isso é decisão.
+- `maxQueuedEvents` ainda não é aplicado, e a fila não pode ser apagada
+  (retenção D-PRIV). O que fazer com a fila cheia está pendente.
+- `wallClockJump` existe, mas o evento `clock_change_detected` ainda não é
+  emitido de forma automática: depende do sinal nativo de troca de hora.
+- O contador de falhas é lido e gravado fora da transação do `settle`. Com
+  dois isolates ao mesmo tempo, a contagem pode sair imprecisa, o que só
+  afeta o intervalo do backoff.
+- Uma base do esquema 1 (commit `fa53e9c`) é recusada sem migração. Ela só
+  existiu em diretórios temporários de teste.
 
 ## 5. Plataforma e execução em segundo plano: o que a documentação oficial diz
 
@@ -172,13 +233,17 @@ sem autorização.
 | D-OFF-1 / D-DEV-2 | Limite offline; sessão expirada, configuração vencida e vínculo revogado enquanto offline | Continuar capturando, nunca descartar e mostrar o estado. A recuperação fica com o backend. |
 | D-PRIV-1..3 | Dados, retenção e acesso às coordenadas | Coordenada só na transição. Apagar o conteúdo local N dias depois do `received` (N a definir). Requer avaliação jurídica. |
 | D-MAN | Contingência manual, aprovação e papel do tablet | O tablet continua sendo a contingência física. A política manual do app vem depois. |
+| D-CFG-1 | Detecção com a configuração vencida | O núcleo oferece `recordAndFlag` ou `refuse`, **sem valor padrão** |
+| D-LINK-1 | Detecção para vínculo revogado no aparelho | Idem |
+| D-AUTH-2 | Detecção depois de 401/403, antes de nova autenticação | Idem. Quando retirar a parada (`resume`) também está pendente. |
+| D-CLK-1 | Tolerância e idade máxima da referência de horário | Parâmetros obrigatórios, sem valor padrão. Os testes usam 5 s e 12 h, só como exemplo. |
+| D-RET-1 | Fila cheia (`maxQueuedEvents`) e limite de tentativas para resposta anômala | Pendente |
 
 ## 7. Próximos incrementos
 
 1. **(feito)** Domínio, fila persistente, servidor simulado e testes.
-2. Avaliador de qualidade do relógio e configuração local (revisão, vigência,
-   `validUntil`, revogação, `config_applied` e `config_expired`), com testes,
-   no `core/`. Não depende de decisão.
+2. **(feito, sem commit)** Cifra obrigatória, classes de falha, backoff
+   gravado, token de reserva, relógio e ciclo de configuração: 79 testes.
 3. Depois de D-PLAT: `flutter create` em `app/` (Android), `flutter doctor`,
    um build de debug e a **cifra validada no moto g86**.
 4. Depois de D-LOC: adaptador nativo do geofence com **área sintética** e

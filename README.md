@@ -17,12 +17,39 @@ política ainda **não definida**.
 | [docs/diagnostico-e-plano.md](docs/diagnostico-e-plano.md) | Diagnóstico, arquitetura, decisões pendentes e próximos incrementos |
 | [docs/matriz-testes-fisicos.md](docs/matriz-testes-fisicos.md) | Matriz de testes em aparelho (nada testado ainda) |
 
+## Laboratório web (SIMULADO)
+
+[app/](app/) é um laboratório Flutter **só para web**. Ele usa o núcleo
+(`presenca_core`) com adaptadores **simulados** (`presenca_lab`):
+
+- memória do navegador, **sem cifra**; recarregar a página apaga tudo;
+- servidor simulado (não é o backend);
+- plataforma de geofence simulada.
+
+Ele **não gera ponto oficial**, não pede localização, não registra geofence e
+não fala com o backend. Também **não valida** SQLite cifrado, Keystore ou
+execução em segundo plano.
+
+```powershell
+cd C:\Users\Micro\Desktop\PROJETO_PONTO\APP_COLABORADOR\app
+flutter run -d chrome --no-web-resources-cdn
+```
+
+Com o comando rodando, `r` recarrega o código e `q` encerra.
+`--no-web-resources-cdn` serve o motor do Flutter localmente, em vez de
+buscá-lo no CDN do Google.
+
 ## Rodar os testes
 
 ```powershell
 cd core
 C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe pub get --offline
 C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe test
+C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe test -p chrome test/web   # núcleo dentro do Chrome
+
+cd ..\app
+flutter analyze
+flutter test
 ```
 
 ## Limites que valem para todo o projeto

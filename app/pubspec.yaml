@@ -1,0 +1,36 @@
+name: ponto_colaborador_lab
+description: >-
+  Laboratório web SIMULADO do app pessoal de presença. Não gera ponto
+  oficial, não usa localização real e não fala com o backend.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+  flutter: 3.47.9
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Só os pontos de entrada compatíveis com a web: presenca_core (domínio e
+  # casos de uso) e presenca_lab (adaptadores SIMULADOS). O armazenamento
+  # cifrado (presenca_core_native) NÃO é usado aqui.
+  presenca_core:
+    path: ../core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # Fontes empacotadas (licença OFL, ver assets/fonts/*-OFL.txt):
+    # nada é buscado na rede em tempo de execução.
+    - family: PublicSans
+      fonts:
+        - asset: assets/fonts/PublicSans-wght.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-wght.ttf
