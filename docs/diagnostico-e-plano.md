@@ -281,6 +281,43 @@ branch `feat/acesso-do-funcionario`.
     deu para verificar daqui. Se não for, a troca mostra "tente pelo
     portal" e a saída apaga a sessão só do aparelho.
 
+### Login com Google no app (11/11/2026)
+
+Pedido da usuária: o mesmo login com Google do portal, também no app.
+
+- **Como funciona:** o app abre o seletor de contas do Google no aparelho
+  (plugin `google_sign_in` 7.2.0, Credential Manager no Android), recebe um
+  ID token e envia em `POST /v1/auth/sign-in/social`
+  `{provider: "google", idToken: {token}}`. A API confere assinatura,
+  emissor, público e validade e devolve o mesmo cookie de sessão do login
+  por senha. Não há navegador nem redirecionamento.
+- **Mesmas regras do portal:** só entra quem já tem conta criada pelo RH,
+  pelo e-mail que o Google atesta como verificado. Nenhuma conta é criada.
+  O papel `employee`, a escolha de empresa e a troca de senha temporária
+  valem igual.
+- **Backend:** não precisou de mudança de código. O contrato está coberto
+  por `test/integration/google-id-token.int-spec.ts` (token forjado, de
+  outro app, vencido, e-mail sem conta, conta desativada).
+- **Build:** o botão só aparece com
+  `--dart-define=GOOGLE_SERVER_CLIENT_ID=….apps.googleusercontent.com`,
+  que é o client ID "Aplicativo da Web" já usado pela API
+  (`GOOGLE_CLIENT_ID`). Não é segredo; o client secret **nunca** entra no
+  app. O valor não fica fixo no código, e um teste confere isso.
+- **Google Cloud (pendente, é da dona da conta):** no mesmo projeto do
+  client da API, criar um client OAuth do tipo **Android** com o nome do
+  pacote do app e o SHA-1 da chave que assina o APK. Um client por chave
+  (debug e release). Sem isso o Google recusa no aparelho.
+- **Isolamento:** o plugin fica só em `lib/integration/google/`; as telas
+  falam com a porta `GoogleIdTokenSource`. O app pede só a identidade, sem
+  escopos extras. O token não é guardado nem registrado em log.
+- **Tratado:** desistir no seletor (sem erro), conta do Google sem
+  cadastro, vínculo recusado, Google indisponível no aparelho ou desligado
+  no servidor, conta desativada, 429 e falta de rede. Conta recusada é
+  esquecida, para a pessoa escolher outra; sair também a esquece.
+- **Testes:** contra servidor falso e Google falso. **Nenhum login com
+  Google foi feito em aparelho real nem em produção**: depende do client
+  Android acima.
+
 **Pendências do backend (fora desta frente):**
 
 - **D-AUTH-1:** token para o app (plugin `bearer`). Elimina a dependência do

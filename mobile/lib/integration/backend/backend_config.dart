@@ -16,4 +16,15 @@ abstract final class BackendConfig {
   }
 
   static bool get realLogin => baseUrl != null;
+
+  /// Client ID do tipo "Aplicativo da Web" do Google: o MESMO que a API usa
+  /// (GOOGLE_CLIENT_ID). Não é segredo. Definido no build:
+  ///   --dart-define=GOOGLE_SERVER_CLIENT_ID=xxxx.apps.googleusercontent.com
+  /// Sem ele, o botão "Entrar com Google" não aparece.
+  static const _google = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+
+  static String? get googleServerClientId {
+    final id = _google.trim();
+    return realLogin && id.endsWith('.apps.googleusercontent.com') ? id : null;
+  }
 }

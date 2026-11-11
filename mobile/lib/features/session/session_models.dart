@@ -69,6 +69,11 @@ enum AuthFailure {
   notEmployee('Este app é só para colaboradores. Para administrar, use o portal.'),
   sessionExpired('Sua sessão terminou. Entre novamente.'),
   rateLimited('Muitas tentativas. Aguarde um minuto e tente de novo.'),
+  googleNoAccount(
+      'Esta conta do Google não tem cadastro no sistema. Use o e-mail cadastrado pelo RH ou entre com e-mail e senha.'),
+  googleNotLinked(
+      'Não foi possível vincular esta conta do Google ao seu cadastro. Entre com e-mail e senha.'),
+  googleUnavailable('Não foi possível entrar com o Google agora. Entre com e-mail e senha.'),
   currentPasswordWrong('A senha temporária não confere.'),
   weakPassword('A nova senha precisa ter de 12 a 128 caracteres.'),
   passwordChangeUnavailable(
@@ -95,6 +100,10 @@ abstract interface class AuthGateway {
   /// Entra com e-mail e senha. A senha não é guardada em lugar nenhum.
   Future<SessionUser> signIn(String email, String password);
 
+  /// Entra com o ID token que o Google emitiu no aparelho. O servidor confere
+  /// a assinatura e só aceita conta JÁ cadastrada (não cria conta).
+  Future<SessionUser> signInWithGoogleIdToken(String idToken);
+
   /// Retoma a sessão guardada no aparelho, se ainda válida no servidor.
   Future<SessionUser?> restore();
 
@@ -105,5 +114,16 @@ abstract interface class AuthGateway {
   Future<SessionUser> changePassword(String currentPassword, String newPassword);
 
   /// Encerra a sessão no servidor (quando possível) e apaga do aparelho.
+  Future<void> signOut();
+}
+
+/// Porta para a identidade do Google no aparelho. Implementação real em
+/// lib/integration/google (plugin google_sign_in); nos testes, um falso.
+abstract interface class GoogleIdTokenSource {
+  /// Abre o seletor de contas do Google e devolve o ID token.
+  /// null = a pessoa desistiu. Falha do Google → AuthException(googleUnavailable).
+  Future<String?> idToken();
+
+  /// Esquece a conta escolhida, para o seletor aparecer de novo na próxima vez.
   Future<void> signOut();
 }

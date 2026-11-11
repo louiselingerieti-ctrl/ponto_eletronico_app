@@ -9,7 +9,7 @@ import '../features/session/session_models.dart';
 /// Em ambos, detecções, áreas e solicitações continuam SIMULADAS (o backend
 /// ainda não tem essas rotas) e a tela avisa isso no modo real.
 class AppServices extends ChangeNotifier {
-  AppServices({DateTime Function()? now, bool signedIn = false, this.auth})
+  AppServices({DateTime Function()? now, bool signedIn = false, this.auth, this.google})
       : _now = now,
         // ignore: prefer_initializing_formals
         _demoSignedIn = signedIn {
@@ -19,6 +19,11 @@ class AppServices extends ChangeNotifier {
   final DateTime Function()? _now;
   final AuthGateway? auth;
   bool get realMode => auth != null;
+
+  /// Identidade do Google no aparelho; só existe no modo real e quando o
+  /// build informou o client ID.
+  final GoogleIdTokenSource? google;
+  bool get googleAvailable => realMode && google != null;
 
   late DemoBackend _backend;
   DemoBackend get backend => _backend;
@@ -99,6 +104,40 @@ class AppServices extends ChangeNotifier {
     }
   }
 
+  /// Entra com a conta do Google do aparelho. Desistir no seletor de contas
+  /// não é erro. Se a conta escolhida não puder entrar, ela é esquecida para
+  /// a pessoa poder escolher outra.
+  Future<bool> signInWithGoogle() async {
+    final a = auth;
+    final g = google;
+    if (a == null || g == null || _busy) return false;
+    _busy = true;
+    _failure = null;
+    notifyListeners();
+    var entered = false;
+    try {
+      final token = await g.idToken();
+      if (token == null) return false;
+      entered = await _afterAuth(await a.signInWithGoogleIdToken(token));
+      return entered;
+    } on AuthException catch (e) {
+      _failure = e.failure;
+      return false;
+    } finally {
+      if (!entered && !needsPasswordChange) await _forgetGoogle();
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _forgetGoogle() async {
+    try {
+      await google?.signOut();
+    } catch (_) {
+      // Melhor esforço: no pior caso o Google reaproveita a última conta.
+    }
+  }
+
   /// Conta autenticada com senha temporária: precisa criar a nova senha no
   /// app antes de seguir. A sessão continua aberta só para isso.
   SessionUser? _passwordChangeFor;
@@ -173,6 +212,7 @@ class AppServices extends ChangeNotifier {
   /// descarta os dados da demonstração (ver BackendAuthGateway.signOut).
   Future<void> signOut() async {
     await auth?.signOut();
+    await _forgetGoogle();
     _backend
       ..removeListener(notifyListeners)
       ..dispose();

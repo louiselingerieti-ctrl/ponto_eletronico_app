@@ -1,8 +1,10 @@
 name: casa_futuro_colaborador
 description: >-
   App do colaborador Casa do Futuro - DEMONSTRAÇÃO VISUAL (Etapa 1 do
-  relatório v1.0). Dados fictícios e adaptadores simulados; não autentica,
-  não usa localização real, não fala com o backend e não gera ponto oficial.
+  relatório v1.0). Sem configuração de build: dados fictícios e adaptadores
+  simulados. Com API_BASE_URL: login real (senha e, com
+  GOOGLE_SERVER_CLIENT_ID, Google). Não usa localização real e não gera
+  ponto oficial.
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -27,6 +29,9 @@ dependencies:
   # flutter_secure_storage: mesma versão já usada no APP_TABLET.
   http: 1.6.0
   flutter_secure_storage: 11.2.0
+  # Login com Google (só em lib/integration/google): obtém o ID token no
+  # aparelho; quem valida é o backend.
+  google_sign_in: 7.2.0
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +42,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/logo.png
+    - assets/brand/google-g.png
   fonts:
     # Licença OFL (assets/fonts/PublicSans-OFL.txt). Substituição proposta
     # da Segoe UI do protótipo; comparar visualmente antes de fechar.

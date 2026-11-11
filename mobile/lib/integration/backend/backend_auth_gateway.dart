@@ -13,6 +13,8 @@ import 'session_store.dart';
 /// - POST /v1/auth/sign-in/email {email, password} → Set-Cookie
 ///   `__Secure-ponto.session_token` (12 h). Enviado SEM cookie antigo, para
 ///   não cair na checagem de Origin do backend.
+/// - POST /v1/auth/sign-in/social {provider: google, idToken} → mesmo cookie
+///   (login com Google pelo app; só conta já cadastrada).
 /// - GET /v1/me → {accountId, email, name, mustChangePassword, sessionExpiresAt}
 /// - GET /v1/me/memberships → {items: [...]} (403 password_change_required)
 ///
@@ -86,6 +88,11 @@ class BackendAuthGateway implements AuthGateway {
         throw const AuthException(AuthFailure.server);
     }
 
+    return _openSession(r);
+  }
+
+  /// Guarda o cookie da sessão recém-criada e confirma a conta em /v1/me.
+  Future<SessionUser> _openSession(http.Response r) async {
     final cookie = _extractSessionCookie(r.headers['set-cookie']);
     if (cookie == null) throw const AuthException(AuthFailure.server);
     await _store.write(cookie);
@@ -96,6 +103,58 @@ class BackendAuthGateway implements AuthGateway {
     } on AuthException {
       await _store.clear();
       rethrow;
+    }
+  }
+
+  /// POST /v1/auth/sign-in/social {provider: google, idToken: {token}} →
+  /// Set-Cookie da sessão. Enviado sem cookie e sem Origin, como o login por
+  /// senha. O servidor confere assinatura, emissor, público e validade do
+  /// token; e-mail sem conta → 401 OAUTH_LINK_ERROR "signup disabled".
+  /// Contrato coberto no backend por test/integration/google-id-token.int-spec.ts.
+  @override
+  Future<SessionUser> signInWithGoogleIdToken(String idToken) async {
+    await _store.clear();
+    final http.Response r;
+    try {
+      r = await _client
+          .post(
+            _u('/v1/auth/sign-in/social'),
+            headers: const {'content-type': 'application/json', 'accept': 'application/json'},
+            body: jsonEncode({
+              'provider': 'google',
+              'idToken': {'token': idToken},
+            }),
+          )
+          .timeout(timeout);
+    } on TimeoutException {
+      throw const AuthException(AuthFailure.network);
+    } on http.ClientException {
+      throw const AuthException(AuthFailure.network);
+    }
+
+    final code = (_errorCode(r) ?? '').toUpperCase();
+    switch (r.statusCode) {
+      case 200:
+        return _openSession(r);
+      case 401:
+        // Sem OAUTH_LINK_ERROR o token foi recusado (ex.: client ID do app
+        // diferente do da API).
+        if (code != 'OAUTH_LINK_ERROR') throw const AuthException(AuthFailure.googleUnavailable);
+        throw AuthException(_errorMessage(r) == 'signup disabled'
+            ? AuthFailure.googleNoAccount
+            : AuthFailure.googleNotLinked);
+      case 403:
+        // E-mail não verificado pelo Google, ou conta desativada (hook do backend).
+        throw AuthException(
+            code == 'EMAIL_NOT_VERIFIED' ? AuthFailure.googleNotLinked : AuthFailure.accountInactive);
+      case 429:
+        throw const AuthException(AuthFailure.rateLimited);
+      case 400:
+      case 404:
+        // Login com Google desligado no servidor.
+        throw const AuthException(AuthFailure.googleUnavailable);
+      default:
+        throw const AuthException(AuthFailure.server);
     }
   }
 
@@ -282,6 +341,17 @@ class BackendAuthGateway implements AuthGateway {
       final d = jsonDecode(utf8.decode(r.bodyBytes));
       if (d is Map && d['error'] is Map) return (d['error'] as Map)['code'] as String?;
       if (d is Map) return d['code'] as String?;
+    } catch (_) {
+      // sem corpo legível
+    }
+    return null;
+  }
+
+  static String? _errorMessage(http.Response r) {
+    try {
+      final d = jsonDecode(utf8.decode(r.bodyBytes));
+      if (d is Map && d['error'] is Map) return (d['error'] as Map)['message'] as String?;
+      if (d is Map) return d['message'] as String?;
     } catch (_) {
       // sem corpo legível
     }
