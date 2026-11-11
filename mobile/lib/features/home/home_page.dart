@@ -10,6 +10,7 @@ import '../../shared/widgets/cdf_widgets.dart';
 import '../delivery/delivery_widgets.dart';
 import '../delivery/sync_page.dart';
 import '../permissions/permissions_page.dart';
+import '../punch/punch_widgets.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -33,6 +34,8 @@ class HomePage extends StatelessWidget {
 
     return PageBody(children: [
       PageIntro('${DatesPt.greeting(now)}, ${AppScope.of(context).firstName}.', DatesPt.longDay(now)),
+      // Modo real: o ponto de hoje é do servidor. O restante da tela ainda é demonstração.
+      if (AppScope.of(context).punch case final punch?) PunchTodayCard(controller: punch),
       const DemoDataNotice(),
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
