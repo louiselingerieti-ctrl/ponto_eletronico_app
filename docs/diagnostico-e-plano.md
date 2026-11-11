@@ -318,6 +318,26 @@ Pedido da usuária: o mesmo login com Google do portal, também no app.
   Google foi feito em aparelho real nem em produção**: depende do client
   Android acima.
 
+### Build automático do APK (11/11/2026)
+
+- **Workflow:** `.github/workflows/build-android.yml`. Em pull request, push
+  na `main` e execução manual: `flutter analyze`, `flutter test` e o APK de
+  release assinado, que fica como artefato da execução por 30 dias.
+- **Ambiente `production` do repositório** (Settings → Environments):
+  - secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+    `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`;
+  - variables: `API_BASE_URL` e `GOOGLE_SERVER_CLIENT_ID`.
+- **Chave de release:** fica fora do repositório. Nesta máquina, o Gradle
+  a lê de `mobile/android/key.properties` (ignorado pelo git); sem chave, o
+  release local sai assinado com a de debug. O workflow falha se o APK
+  sair assinado com a chave de debug.
+- **Perder a chave de release impede atualizar o app já instalado.** Ela
+  precisa de cópia de reserva fora desta máquina.
+- **Google Cloud:** cada chave tem o próprio SHA-1 e precisa da própria
+  credencial OAuth do tipo Android. O resumo de cada execução do workflow
+  mostra o SHA-1 do APK gerado.
+- O workflow não publica em loja nem distribui o APK: só gera o arquivo.
+
 **Pendências do backend (fora desta frente):**
 
 - **D-AUTH-1:** token para o app (plugin `bearer`). Elimina a dependência do

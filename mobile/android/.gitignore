@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Sessões do compilador Kotlin (geradas no build).
+.kotlin/
