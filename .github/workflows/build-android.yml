@@ -1,0 +1,139 @@
+name: App do colaborador (Android)
+
+# Confere o app (analyze + testes) e gera o APK de release assinado.
+#  - Pull request: confere e gera o APK, para validar antes de mesclar.
+#  - Push na main e execução manual: idem; o APK fica como artefato da execução.
+# A chave de assinatura e as senhas vêm dos SECRETS do ambiente "production";
+# o endereço da API e o client ID do Google, das VARIABLES do mesmo ambiente.
+# Nada disso fica no repositório.
+on:
+  pull_request:
+    paths: ['mobile/**', 'core/**', '.github/workflows/build-android.yml']
+  push:
+    branches: [main]
+    paths: ['mobile/**', 'core/**', '.github/workflows/build-android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.9'
+
+jobs:
+  conferir:
+    name: Analyze e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  apk:
+    name: APK de release
+    needs: conferir
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Conferir a configuração do ambiente
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_SERVER_CLIENT_ID }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          faltando=""
+          for nome in API_BASE_URL KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [ -n "${!nome}" ] || faltando="$faltando $nome"
+          done
+          if [ -n "$faltando" ]; then
+            echo "::error::Faltam no ambiente production:$faltando"
+            exit 1
+          fi
+          case "$API_BASE_URL" in https://*) ;; *) echo "::error::API_BASE_URL precisa começar com https://"; exit 1 ;; esac
+          [ -n "$GOOGLE_SERVER_CLIENT_ID" ] || echo "::warning::GOOGLE_SERVER_CLIENT_ID vazio: o APK sai sem o botão Entrar com Google."
+
+      - name: Preparar a chave de assinatura
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - run: flutter pub get
+
+      - name: Gerar o APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          flutter build apk --release \
+            --build-number="$GITHUB_RUN_NUMBER" \
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID"
+
+      - name: Conferir a assinatura
+        run: |
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee "$RUNNER_TEMP/certs.txt"
+          if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/certs.txt"; then
+            echo "::error::O APK saiu assinado com a chave de DEBUG."
+            exit 1
+          fi
+          {
+            echo "### APK de release"
+            echo ""
+            echo "- Build: $GITHUB_RUN_NUMBER"
+            echo "- API: $API_BASE_URL"
+            echo "- SHA-1 do certificado (o que vai na credencial Android do Google Cloud):"
+            echo '```'
+            grep -i 'SHA-1' "$RUNNER_TEMP/certs.txt" | head -1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+
+      - name: Apagar a chave do runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-colaborador-${{ github.run_number }}
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30

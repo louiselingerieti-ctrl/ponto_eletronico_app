@@ -17,6 +17,27 @@ política ainda **não definida**.
 | [docs/diagnostico-e-plano.md](docs/diagnostico-e-plano.md) | Diagnóstico, arquitetura, decisões pendentes e próximos incrementos |
 | [docs/matriz-testes-fisicos.md](docs/matriz-testes-fisicos.md) | Matriz de testes em aparelho (nada testado ainda) |
 
+## App do colaborador Casa do Futuro — demonstração visual (Etapa 1)
+
+[mobile/](mobile/) replica em Flutter, sem WebView, a interface aprovada no
+relatório v1.0. Telas: Início, Histórico, + Solicitar (lista, formulário e
+detalhe), Áreas, Perfil, Permissões, Sincronização e Login.
+
+- Usa **dados fictícios** (Ana Souza, Loja Centro, pedidos de exemplo).
+- Fila e envio usam o núcleo real sobre memória **sem cifra** e servidor
+  **simulado**.
+- Não autentica, não pede localização, não fala com o backend e **não gera
+  ponto oficial**.
+
+```powershell
+cd C:\Users\Micro\Desktop\PROJETO_PONTO\APP_COLABORADOR\mobile
+flutter test                     # inclui as capturas em build\screenshots\
+flutter run -d chrome            # ou instale o APK de debug só no emulador
+```
+
+`build\screenshots\comparacao.html` mostra cada captura do álbum ao lado da
+versão Flutter.
+
 ## Laboratório web (SIMULADO)
 
 [app/](app/) é um laboratório Flutter **só para web**. Ele usa o núcleo

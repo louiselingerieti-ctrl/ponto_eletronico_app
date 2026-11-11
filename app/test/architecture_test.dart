@@ -29,6 +29,17 @@ void main() {
     }
   });
 
+  test('manifesto Android principal não pede localização nem outra permissão', () {
+    final m = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(m.contains('uses-permission'), isFalse,
+        reason: 'o laboratório não precisa de permissão; INTERNET só em debug/profile');
+    expect(m.contains('LOCATION'), isFalse);
+    for (final variant in ['debug', 'profile']) {
+      final v = File('android/app/src/$variant/AndroidManifest.xml').readAsStringSync();
+      expect(v.contains('LOCATION'), isFalse, reason: variant);
+    }
+  });
+
   test('pubspec só depende do flutter e do core', () {
     final deps = File('pubspec.yaml')
         .readAsStringSync()

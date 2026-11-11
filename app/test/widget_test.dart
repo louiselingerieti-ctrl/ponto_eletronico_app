@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ponto_colaborador_lab/lab/lab_controller.dart';
 import 'package:ponto_colaborador_lab/main.dart';
+import 'package:ponto_colaborador_lab/ui/lab_copy.dart';
 import 'package:ponto_colaborador_lab/ui/widgets.dart';
 
 void main() {
@@ -28,7 +29,7 @@ void main() {
       await pumpLab(t, size);
       expect(find.text(HazardBand.text), findsOneWidget);
       expect(find.text('Nenhum evento ainda.'), findsOneWidget);
-      expect(find.text('Memória do navegador: recarregar a página apaga tudo'), findsOneWidget);
+      expect(find.text(LabCopy.memoryChip), findsOneWidget);
       expect(t.takeException(), isNull, reason: 'sem overflow de layout');
     });
   }

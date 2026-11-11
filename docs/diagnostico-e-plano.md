@@ -158,6 +158,195 @@ O protótipo e a identidade visual do laboratório foram aprovados em
   escolhas de D-CFG-1, D-LINK-1 e D-AUTH-2 aparecem, mas ainda não têm efeito
   visível.
 
+### Incremento 3, parte 3: laboratório no emulador Android (11/11/2026)
+
+A usuária autorizou acrescentar o Android ao laboratório, **só para o
+emulador** (`ponto_dev_480x800`, Android 16, x86_64). Isso **não** aprova a
+plataforma Android (D-PLAT continua pendente) e não autoriza instalar no
+moto g86.
+
+- `applicationId` provisório e só de laboratório:
+  `dev.laboratorio.ponto_colaborador_lab`. O nome visível é "Lab simulado".
+- O manifesto principal não declara **nenhuma** permissão; `INTERNET` aparece
+  só em debug e profile, para as ferramentas do Flutter. A guarda de
+  arquitetura confere isso.
+- A persistência continua em memória, sem cifra: fechar o app apaga tudo. A
+  tela mostra o texto certo para cada plataforma.
+- Aceleração: `HypervisorPlatform` estava ativado, mas o hipervisor só subiu
+  depois de um boot completo. O PC usava só hibernação desde 30/10. Agora
+  `emulator -accel-check` mostra WHPX utilizável.
+- Instalar o APK sempre com o serial explícito do emulador (`adb -s
+  emulator-NNNN`), nunca no aparelho físico.
+
+### App do colaborador: Etapa 1 do relatório v1.0 (11/11/2026)
+
+Projeto separado em `mobile/`: o relatório pede não confundir o laboratório
+com o app. A interface segue o álbum de 16 capturas, com a identidade da
+Casa do Futuro (tokens claros e escuros, logo original), fontes e ícones
+empacotados (Public Sans OFL e Lucide 0.460.0 ISC) e nenhuma dependência de
+pub nova além do `uuid`, que o `core` já usava.
+
+- **Arquitetura:** organizada por feature (`home`, `history`, `requests`,
+  `areas`, `profile`, `permissions`, `delivery`, `session`).
+  - Os adaptadores simulados ficam só em `lib/demo`, e uma guarda de
+    arquitetura confere isso.
+  - Cada uma das cinco áreas tem o próprio `Navigator` dentro de um
+    `IndexedStack`: o estado é preservado e o "voltar" fecha o detalhe antes
+    de sair da área.
+- **Dados:** os eventos e a entrega vêm do núcleo real. "Recebido" só aparece
+  com o ACK do servidor simulado, e as áreas mostram a etapa real do ciclo de
+  configuração.
+- **Testes:** 40 no total.
+  - Menu em sequência e a partir do detalhe, círculo central tocável, voltar
+    do sistema, formulário (validação, toque repetido, rascunho sem conexão,
+    confirmação ao sair, rascunho mantido ao trocar de área), entrega,
+    permissão, saída sem herança de dados, 320 px e fonte ×1,3 e ×1,6, alvos
+    de 48.
+  - 16 capturas geradas pelo próprio `flutter test`.
+- **Diferenças em relação ao álbum, para decisão:**
+  - Sincronização e Permissões abrem dentro da área atual, que continua
+    marcada no menu. No protótipo, nenhum item fica marcado.
+  - O login não mostra o avatar "AS": não há usuária antes de entrar.
+  - O rodapé diz "Demonstração • dados fictícios".
+  - A Sincronização mostra a última confirmação do servidor, que o relatório
+    pede e o álbum não tem.
+  - Ações de texto têm área de toque de 48 (no protótipo, 40).
+  - A Public Sans substitui a Segoe UI, com o peso 650 aproximado para 700.
+
+#### Layout adaptativo (`lib/shared/layout/cdf_layout.dart`)
+
+Uma única fonte de regra para o que varia com o dispositivo. A classe é
+escolhida pela largura e pela altura úteis, já sem as barras do sistema.
+
+- **Largura:** compacta (< 380), padrão (380–599), média (600–839) ou
+  expandida (≥ 840).
+- **Altura:** baixa (< 600) ou normal.
+
+O que varia: margem lateral (16, 22 ou 32), escala dos títulos (28, 26 ou
+24; login 34 ou 28), espaços verticais, cabeçalho e o bloco "Última
+detecção". Em tela larga, o conteúdo, o cabeçalho e os itens do menu ficam
+numa coluna central de até 560. Cores, raios, ícones e o círculo de 52 não
+mudam.
+
+- **Nos contextos do álbum, os valores são idênticos aos aprovados.** Um
+  teste trava isso.
+- O conteúdo rola por baixo da faixa transparente do círculo central e
+  ganha um respiro final igual à altura do menu.
+- **Matriz testada:** emulador 320 × 533, 360 × 640, 400 × 860, 412 × 915,
+  paisagem 800 × 360, tablet 768 × 1024 e navegador 1280 × 800, cada um com
+  fonte × 1 e × 1,3, além do teclado aberto.
+- **Adaptação nova, para revisão da dona:** tela baixa, paisagem e tela
+  larga. Capturas em `mobile/build/screenshots/ctx-*.png`.
+
+### Login real no backend (11/11/2026, provisório por cookie)
+
+Pedido da usuária. O backend está em produção em `api-ponto.margemshop.com.br`
+(`/health/ready` ok). O contrato foi conferido só lendo o código do backend,
+branch `feat/acesso-do-funcionario`.
+
+- **Modo:** é escolhido no build com `--dart-define=API_BASE_URL=https://…`.
+  Sem isso, o app abre em demonstração. Na web, fica sempre em demonstração.
+  O endereço não fica fixo no código, e um teste confere isso.
+- **Rotas usadas:**
+  - `POST /v1/auth/sign-in/email`, enviado sem cookie antigo;
+  - `GET /v1/me`;
+  - `GET /v1/me/memberships`.
+- **Sessão:** o cookie `__Secure-ponto.session_token` fica no
+  armazenamento seguro do Android, só como `nome=valor`. A senha nunca é
+  guardada e o backup automático do app está desligado.
+- **Isolamento:** rede e armazenamento seguro ficam só em `lib/integration/`.
+  O manifesto declara apenas `INTERNET`, sem localização.
+- **Tratado:** senha errada, conta desativada, senha temporária (orienta
+  usar o portal), sem acesso ativo, mais de uma empresa (escolha
+  explícita), 429, falta de rede (não apaga a sessão), resposta fora do
+  contrato e sessão retomada ou expirada.
+- **Continua simulado, com aviso na tela:** detecções, áreas, solicitações
+  e o vínculo. O backend não tem essas rotas nem "meu vínculo" para o
+  funcionário.
+- **Testes:** feitos contra um servidor falso que imita o backend. Nenhum
+  login foi feito em produção: a usuária ainda não tem conta.
+
+- **Só colaborador:** o app aceita apenas acessos com o papel `employee`.
+  Contas só de gestão (`tenant_admin`, `hr`, `manager`) recebem "use o
+  portal". A fronteira de segurança continua sendo o backend.
+- **Senha temporária:** a troca é feita no próprio app, na tela "Crie sua
+  senha".
+  - O app chama `POST /v1/auth/change-password` com `revokeOtherSessions` e
+    guarda a sessão nova que o servidor emite.
+  - Sair chama `POST /v1/auth/sign-out` e encerra a sessão no servidor.
+  - Nos dois casos o app envia `Origin` igual à origem da API, porque o
+    Better Auth confia na origem do próprio `baseURL`
+    (`better-auth/dist/context/helpers.mjs:73-74`).
+  - **Depende de `BETTER_AUTH_URL` de produção ser o endereço da API.** Não
+    deu para verificar daqui. Se não for, a troca mostra "tente pelo
+    portal" e a saída apaga a sessão só do aparelho.
+
+### Login com Google no app (11/11/2026)
+
+Pedido da usuária: o mesmo login com Google do portal, também no app.
+
+- **Como funciona:** o app abre o seletor de contas do Google no aparelho
+  (plugin `google_sign_in` 7.2.0, Credential Manager no Android), recebe um
+  ID token e envia em `POST /v1/auth/sign-in/social`
+  `{provider: "google", idToken: {token}}`. A API confere assinatura,
+  emissor, público e validade e devolve o mesmo cookie de sessão do login
+  por senha. Não há navegador nem redirecionamento.
+- **Mesmas regras do portal:** só entra quem já tem conta criada pelo RH,
+  pelo e-mail que o Google atesta como verificado. Nenhuma conta é criada.
+  O papel `employee`, a escolha de empresa e a troca de senha temporária
+  valem igual.
+- **Backend:** não precisou de mudança de código. O contrato está coberto
+  por `test/integration/google-id-token.int-spec.ts` (token forjado, de
+  outro app, vencido, e-mail sem conta, conta desativada).
+- **Build:** o botão só aparece com
+  `--dart-define=GOOGLE_SERVER_CLIENT_ID=….apps.googleusercontent.com`,
+  que é o client ID "Aplicativo da Web" já usado pela API
+  (`GOOGLE_CLIENT_ID`). Não é segredo; o client secret **nunca** entra no
+  app. O valor não fica fixo no código, e um teste confere isso.
+- **Google Cloud (pendente, é da dona da conta):** no mesmo projeto do
+  client da API, criar um client OAuth do tipo **Android** com o nome do
+  pacote do app e o SHA-1 da chave que assina o APK. Um client por chave
+  (debug e release). Sem isso o Google recusa no aparelho.
+- **Isolamento:** o plugin fica só em `lib/integration/google/`; as telas
+  falam com a porta `GoogleIdTokenSource`. O app pede só a identidade, sem
+  escopos extras. O token não é guardado nem registrado em log.
+- **Tratado:** desistir no seletor (sem erro), conta do Google sem
+  cadastro, vínculo recusado, Google indisponível no aparelho ou desligado
+  no servidor, conta desativada, 429 e falta de rede. Conta recusada é
+  esquecida, para a pessoa escolher outra; sair também a esquece.
+- **Testes:** contra servidor falso e Google falso. **Nenhum login com
+  Google foi feito em aparelho real nem em produção**: depende do client
+  Android acima.
+
+### Build automático do APK (11/11/2026)
+
+- **Workflow:** `.github/workflows/build-android.yml`. Em pull request, push
+  na `main` e execução manual: `flutter analyze`, `flutter test` e o APK de
+  release assinado, que fica como artefato da execução por 30 dias.
+- **Ambiente `production` do repositório** (Settings → Environments):
+  - secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+    `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`;
+  - variables: `API_BASE_URL` e `GOOGLE_SERVER_CLIENT_ID`.
+- **Chave de release:** fica fora do repositório. Nesta máquina, o Gradle
+  a lê de `mobile/android/key.properties` (ignorado pelo git); sem chave, o
+  release local sai assinado com a de debug. O workflow falha se o APK
+  sair assinado com a chave de debug.
+- **Perder a chave de release impede atualizar o app já instalado.** Ela
+  precisa de cópia de reserva fora desta máquina.
+- **Google Cloud:** cada chave tem o próprio SHA-1 e precisa da própria
+  credencial OAuth do tipo Android. O resumo de cada execução do workflow
+  mostra o SHA-1 do APK gerado.
+- O workflow não publica em loja nem distribui o APK: só gera o arquivo.
+
+**Pendências do backend (fora desta frente):**
+
+- **D-AUTH-1:** token para o app (plugin `bearer`). Elimina a dependência do
+  `Origin` declarado pelo app descrita acima.
+- Rota de "meu vínculo" e as rotas de presença e solicitações (contrato
+  `presenca-v1`).
+- Cookie entre domínios (`SESSION_COOKIE_CROSS_SITE` e `TRUSTED_ORIGINS`)
+  para permitir login real também na web.
+
 ### Limitações conhecidas do núcleo (registradas, não corrigidas)
 
 - A cifra só foi verificada no **Windows**. No Android, a chave no Keystore
