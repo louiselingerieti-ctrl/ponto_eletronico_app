@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../demo/demo_backend.dart';
+import '../features/punch/punch_controller.dart';
 import '../features/session/session_models.dart';
 
 /// Sessão do app em dois modos EXPLÍCITOS (nunca há troca silenciosa):
@@ -9,12 +12,17 @@ import '../features/session/session_models.dart';
 /// Em ambos, detecções, áreas e solicitações continuam SIMULADAS (o backend
 /// ainda não tem essas rotas) e a tela avisa isso no modo real.
 class AppServices extends ChangeNotifier {
-  AppServices({DateTime Function()? now, bool signedIn = false, this.auth, this.google})
+  AppServices({DateTime Function()? now, bool signedIn = false, this.auth, this.google, PunchDeps? punch})
       : _now = now,
         // ignore: prefer_initializing_formals
-        _demoSignedIn = signedIn {
+        _demoSignedIn = signedIn,
+        punch = auth != null && punch != null ? PunchController(punch) : null {
     _backend = DemoBackend(now: now)..addListener(notifyListeners);
   }
+
+  /// Ponto REAL (localização + selfie). Só existe no modo real e quando o
+  /// build trouxe os adaptadores do aparelho; na demonstração é null.
+  final PunchController? punch;
 
   final DateTime Function()? _now;
   final AuthGateway? auth;
@@ -205,12 +213,15 @@ class AppServices extends ChangeNotifier {
     _user = u;
     _choices = ms;
     _membership = ms.length == 1 ? ms.single : null;
+    final chosen = _membership;
+    if (chosen != null) unawaited(punch?.load(chosen.tenantId));
     return true;
   }
 
   void chooseMembership(Membership m) {
     if (!_choices.contains(m)) return;
     _membership = m;
+    unawaited(punch?.load(m.tenantId));
     notifyListeners();
   }
 
@@ -219,6 +230,7 @@ class AppServices extends ChangeNotifier {
   Future<void> signOut() async {
     await auth?.signOut();
     await _forgetGoogle();
+    await punch?.reset();
     _backend
       ..removeListener(notifyListeners)
       ..dispose();
@@ -235,6 +247,7 @@ class AppServices extends ChangeNotifier {
 
   @override
   void dispose() {
+    punch?.dispose();
     _backend.dispose();
     super.dispose();
   }

@@ -17,9 +17,9 @@ void main() {
       .toList();
   String rel(File f) => f.path.replaceAll(r'\', '/');
 
-  test('sem IO nativo, localização, WebView ou armazenamento nativo', () {
-    final bad = RegExp(r"import '(dart:io|dart:ffi|dart:html|package:dio|package:geolocator|"
-        r"package:location|package:webview|package:presenca_core/presenca_core_native)");
+  test('sem IO nativo, WebView ou armazenamento nativo', () {
+    final bad = RegExp(r"import '(dart:io|dart:ffi|dart:html|package:dio|"
+        r"package:location/|package:webview|package:presenca_core/presenca_core_native)");
     for (final f in files) {
       expect(bad.hasMatch(f.readAsStringSync()), isFalse, reason: rel(f));
     }
@@ -68,14 +68,30 @@ void main() {
     }
   });
 
-  test('manifesto Android: só INTERNET, nunca localização', () {
+  test('plugins do aparelho (GPS, câmera, rosto, avisos) só em lib/integration/device', () {
+    final device = RegExp(r"import 'package:(geolocator|image_picker|google_mlkit_face_detection|flutter_local_notifications|timezone)/");
+    for (final f in files) {
+      if (rel(f).contains('lib/integration/device/')) continue;
+      expect(device.hasMatch(f.readAsStringSync()), isFalse, reason: rel(f));
+    }
+  });
+
+  test('manifesto Android: localização só em primeiro plano, sem câmera própria nem alarme exato', () {
     final m = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     final perms = RegExp(r'android:name="(android\.permission\.[A-Z_]+)"')
         .allMatches(m)
         .map((x) => x.group(1))
         .toSet();
-    expect(perms, {'android.permission.INTERNET'});
-    expect(m.contains('LOCATION'), isFalse);
+    expect(perms, {
+      'android.permission.INTERNET',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
+      'android.permission.POST_NOTIFICATIONS',
+      'android.permission.VIBRATE',
+      'android.permission.RECEIVE_BOOT_COMPLETED',
+    });
+    // O app não acompanha a pessoa: nada de localização em segundo plano.
+    expect(m.contains('ACCESS_BACKGROUND_LOCATION'), isFalse);
   });
 
   test('não desenha relógio/bateria falsos', () {

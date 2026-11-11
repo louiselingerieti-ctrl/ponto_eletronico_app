@@ -338,6 +338,56 @@ Pedido da usuária: o mesmo login com Google do portal, também no app.
   mostra o SHA-1 do APK gerado.
 - O workflow não publica em loja nem distribui o APK: só gera o arquivo.
 
+### Ponto real pelo app: localização + selfie (11/11/2026)
+
+Pedido da usuária, que **muda decisões anteriores deste documento**: o app
+passa a ler a localização e a usar selfie. Respostas dela às perguntas:
+
+- A **localização** registra um ponto provisório ("simulado"). Sozinho, ele
+  não conta.
+- A **selfie** é o que homologa o ponto. Sem comparação automática: é
+  evidência para o RH (opção escolhida entre três).
+- O **gatilho** é o horário da escala: o celular vibra e avisa.
+- **Fora da área** o ponto é aceito e fica sinalizado.
+
+O que foi feito:
+
+- **Fluxo:** cartão "Seu ponto hoje" no início (modo real) → etapa 1 lê a
+  localização e cria o ponto provisório no servidor → etapa 2 tira a selfie,
+  em até 5 minutos, e confirma. Fechar antes da selfie deixa o registro só
+  com a localização; ao voltar dentro da janela, o app retoma o mesmo ponto.
+- **Localização:** uma leitura, só na hora do registro (`geolocator`,
+  permissão "durante o uso"). **Sem localização em segundo plano e sem
+  geofence**: o app não acompanha a pessoa. Negar a permissão não impede o
+  ponto; ele segue sem coordenadas e sinalizado. O indicador de localização
+  simulada do Android vai junto.
+- **Selfie:** câmera frontal do sistema (`image_picker`), reduzida para até
+  200 KB. O ML Kit confere **no aparelho** se há um rosto na foto
+  (`google_mlkit_face_detection`); não identifica a pessoa e nada vai ao
+  Google. A foto não é guardada no aparelho.
+- **Avisos:** locais (`flutter_local_notifications`), agendados a partir da
+  escala dos próximos 7 dias, em modo inexato (o Android pode atrasar alguns
+  minutos). A permissão só é pedida quando a pessoa toca em "Ativar avisos".
+  Sair da conta apaga os avisos.
+- **Servidor:** `GET /v1/me/attendance`, `POST /v1/me/punches` e
+  `POST /v1/me/punches/{id}/face` (backend, migração 0010). As escritas
+  levam `Origin` igual à origem da API.
+- **Isolamento:** os plugins do aparelho ficam só em
+  `lib/integration/device/`. Manifesto: INTERNET, localização em primeiro
+  plano, notificações, vibração e reinício. Um teste confere a lista.
+
+Limites conhecidos:
+
+- **Não é ponto oficial para fins legais** (sem NSR, comprovante e AFD).
+- **Sem fila offline:** sem internet, o ponto não é registrado. O núcleo de
+  fila (`core/`) ainda não foi ligado a este fluxo.
+- **Selfie é dado pessoal sensível:** falta o termo de consentimento e a
+  regra de retenção (D-PRIV), que dependem de avaliação jurídica.
+- A checagem de rosto não detecta foto de foto.
+- O histórico, as áreas e as solicitações do app continuam em demonstração.
+- **Nada disto foi testado em aparelho real.** Os testes usam servidor,
+  GPS, câmera e avisos falsos.
+
 **Pendências do backend (fora desta frente):**
 
 - **D-AUTH-1:** token para o app (plugin `bearer`). Elimina a dependência do
