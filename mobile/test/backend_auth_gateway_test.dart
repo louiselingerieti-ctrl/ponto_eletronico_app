@@ -14,6 +14,9 @@ class FakeBackend {
   String accountStatus = 'active';
   bool mustChange = false;
   int signInStatus = 200;
+
+  /// false = servidor sem GOOGLE_CLIENT_ID (o provedor não existe).
+  bool googleEnabled = true;
   List<Map<String, Object?>> memberships = [
     {
       'tenantId': '00000000-0000-4000-8000-0000000000a1',
@@ -45,6 +48,29 @@ class FakeBackend {
             if (accountStatus != 'active') return http.Response('{"message":"forbidden"}', 403);
             return http.Response('{"redirect":false,"token":"tok","user":{}}', 200, headers: {
               // Vários Set-Cookie juntos, como o cliente HTTP os entrega.
+              'set-cookie': '__Secure-ponto.session_token=$validToken; Max-Age=43200; Path=/; '
+                  'HttpOnly; Secure; SameSite=Lax,__Secure-ponto.session_data=abc; Path=/; HttpOnly',
+            });
+          case 'POST /v1/auth/sign-in/social':
+            // Respostas iguais às do backend (google-id-token.int-spec.ts).
+            if (!googleEnabled) return http.Response('{"message":"Provider not found","code":"PROVIDER_NOT_FOUND"}', 404);
+            if (signInStatus != 200) return http.Response('{"message":"x"}', signInStatus);
+            final b = jsonDecode(r.body) as Map;
+            final token = b['provider'] == 'google' && b['idToken'] is Map ? (b['idToken'] as Map)['token'] : null;
+            switch (token) {
+              case 'id-token-da-ana':
+                break;
+              case 'id-token-sem-cadastro':
+                return http.Response('{"message":"signup disabled","code":"OAUTH_LINK_ERROR"}', 401);
+              case 'id-token-nao-vinculavel':
+                return http.Response('{"message":"account not linked","code":"OAUTH_LINK_ERROR"}', 401);
+              case 'id-token-email-nao-verificado':
+                return http.Response('{"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}', 403);
+              default:
+                return http.Response('{"message":"Invalid token","code":"INVALID_TOKEN"}', 401);
+            }
+            if (accountStatus != 'active') return http.Response('{"message":"forbidden"}', 403);
+            return http.Response('{"redirect":false,"token":"tok","user":{}}', 200, headers: {
               'set-cookie': '__Secure-ponto.session_token=$validToken; Max-Age=43200; Path=/; '
                   'HttpOnly; Secure; SameSite=Lax,__Secure-ponto.session_data=abc; Path=/; HttpOnly',
             });
@@ -145,6 +171,62 @@ void main() {
     store.value = '__Secure-ponto.session_token=tok.sig';
     expect(await failureOf(gw.restore()), AuthFailure.accountInactive);
     expect(store.value, isNull);
+  });
+
+  group('login com Google (ID token)', () {
+    test('envia só o token, sem cookie nem Origin, guarda a sessão e lê /v1/me', () async {
+      store.value = '__Secure-ponto.session_token=sessao-antiga';
+      final u = await gw.signInWithGoogleIdToken('id-token-da-ana');
+      expect(u.name, 'Ana Souza');
+      expect(store.value, '__Secure-ponto.session_token=tok.sig');
+      final r = fake.requests.first;
+      expect(r.url.toString(), 'https://api.exemplo.test/v1/auth/sign-in/social');
+      expect(jsonDecode(r.body), {
+        'provider': 'google',
+        'idToken': {'token': 'id-token-da-ana'},
+      });
+      expect(r.headers.containsKey('cookie'), isFalse, reason: 'a sessão anterior não acompanha o login');
+      expect(r.headers.containsKey('origin'), isFalse);
+      expect(fake.requests[1].headers['cookie'], '__Secure-ponto.session_token=tok.sig');
+    });
+
+    test('cada recusa do servidor vira a mensagem certa, e nada fica guardado', () async {
+      final cases = {
+        'id-token-sem-cadastro': AuthFailure.googleNoAccount,
+        'id-token-nao-vinculavel': AuthFailure.googleNotLinked,
+        'id-token-email-nao-verificado': AuthFailure.googleNotLinked,
+        'id-token-forjado': AuthFailure.googleUnavailable,
+      };
+      for (final MapEntry(key: token, value: failure) in cases.entries) {
+        store.value = '__Secure-ponto.session_token=sessao-antiga';
+        expect(await failureOf(gw.signInWithGoogleIdToken(token)), failure, reason: token);
+        expect(store.value, isNull, reason: token);
+      }
+    });
+
+    test('conta desativada, Google desligado no servidor, 429 e 500', () async {
+      fake.accountStatus = 'disabled';
+      expect(await failureOf(gw.signInWithGoogleIdToken('id-token-da-ana')), AuthFailure.accountInactive);
+      fake
+        ..accountStatus = 'active'
+        ..googleEnabled = false;
+      expect(await failureOf(gw.signInWithGoogleIdToken('id-token-da-ana')), AuthFailure.googleUnavailable);
+      fake
+        ..googleEnabled = true
+        ..signInStatus = 429;
+      expect(await failureOf(gw.signInWithGoogleIdToken('id-token-da-ana')), AuthFailure.rateLimited);
+      fake.signInStatus = 500;
+      expect(await failureOf(gw.signInWithGoogleIdToken('id-token-da-ana')), AuthFailure.server);
+    });
+
+    test('sem rede: network', () async {
+      final g = BackendAuthGateway(
+        baseUrl: base,
+        store: store,
+        client: MockClient((_) async => throw http.ClientException('sem rede')),
+      );
+      expect(await failureOf(g.signInWithGoogleIdToken('id-token-da-ana')), AuthFailure.network);
+    });
   });
 
   test('excesso de tentativas (429) e falha do servidor (500)', () async {

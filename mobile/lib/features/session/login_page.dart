@@ -7,8 +7,10 @@ import '../../shared/layout/cdf_layout.dart';
 import '../../shared/theme/tokens.dart';
 import '../../shared/widgets/cdf_widgets.dart';
 
-/// Login VISUAL: não autentica, não valida credenciais no servidor e não
-/// guarda a senha. Recuperação de senha não tem tela aprovada.
+/// Login. No modo real autentica no backend (senha ou Google, este só quando
+/// o build informa o client ID); na demonstração não autentica nem valida. A
+/// senha nunca é guardada.
+/// Recuperação de senha não tem tela aprovada.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -114,8 +116,22 @@ class _LoginPageState extends State<LoginPage> {
                     busy ? 'Entrando…' : (real ? 'Entrar' : 'Entrar na demonstração'),
                     top: CdfLayout.of(context).formButtonTop,
                     onPressed: busy ? null : _submit),
+                if (services.googleAvailable) ...[
+                  const _OrDivider(),
+                  _GoogleButton(
+                      busy: busy,
+                      onPressed: busy
+                          ? null
+                          : () {
+                              // A senha digitada não acompanha o login pelo Google.
+                              _password.clear();
+                              services.signInWithGoogle();
+                            }),
+                ],
                 Note(real
-                    ? 'Use a conta criada pelo RH da sua empresa. A senha não fica guardada no aparelho.'
+                    ? (services.googleAvailable
+                        ? 'Use a conta criada pelo RH da sua empresa. O Google só funciona para o e-mail já cadastrado. A senha não fica guardada no aparelho.'
+                        : 'Use a conta criada pelo RH da sua empresa. A senha não fica guardada no aparelho.')
                     : 'Use dados fictícios. Este protótipo não autentica nem envia informações.'),
               ]),
             ),
@@ -123,6 +139,70 @@ class _LoginPageState extends State<LoginPage> {
         ]),
       ),
       bottomNavigationBar: const DemoFooter(),
+    );
+  }
+}
+
+/// Separador "ou" entre o login por senha e o login pelo Google.
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.cdf;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: ExcludeSemantics(
+        child: Row(children: [
+          Expanded(child: Divider(color: c.line, height: 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text('ou', style: cdfText(13, color: c.sub)),
+          ),
+          Expanded(child: Divider(color: c.line, height: 1)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Botão "Entrar com Google" no padrão da marca do Google: fundo neutro,
+/// o "G" colorido original e texto escuro (no tema escuro, o inverso).
+class _GoogleButton extends StatelessWidget {
+  const _GoogleButton({required this.busy, required this.onPressed});
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.cdf;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: c.paper,
+            foregroundColor: c.ink,
+            disabledForegroundColor: c.sub,
+            side: BorderSide(color: c.line),
+            minimumSize: const Size.fromHeight(CdfSize.minTouch),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CdfSize.radiusButton)),
+            textStyle: cdfText(14, weight: 650),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Opacity(
+              opacity: busy ? .5 : 1,
+              child: Image.asset('assets/brand/google-g.png',
+                  width: 20, height: 20, excludeFromSemantics: true),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(child: Text('Entrar com Google', textAlign: TextAlign.center)),
+          ]),
+        ),
+      ),
     );
   }
 }

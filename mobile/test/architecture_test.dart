@@ -33,6 +33,21 @@ void main() {
     }
   });
 
+  test('plugin do Google só em lib/integration/google; telas falam com a porta', () {
+    for (final f in files) {
+      if (rel(f).contains('lib/integration/google/')) continue;
+      expect(f.readAsStringSync().contains('package:google_sign_in'), isFalse, reason: rel(f));
+    }
+  });
+
+  test('client ID do Google e segredos não ficam fixos no código', () {
+    for (final f in files) {
+      final src = f.readAsStringSync();
+      expect(RegExp(r'\d{6,}-[a-z0-9]+\.apps\.googleusercontent\.com').hasMatch(src), isFalse, reason: rel(f));
+      expect(src.contains('GOCSPX-'), isFalse, reason: rel(f));
+    }
+  });
+
   test('endereço do servidor não fica fixo no código', () {
     for (final f in files) {
       expect(f.readAsStringSync().contains('margemshop'), isFalse, reason: rel(f));
