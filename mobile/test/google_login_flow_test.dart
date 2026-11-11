@@ -3,6 +3,7 @@ import 'package:casa_futuro_colaborador/app/app_services.dart';
 import 'package:casa_futuro_colaborador/features/session/session_models.dart';
 import 'package:casa_futuro_colaborador/integration/backend/backend_auth_gateway.dart';
 import 'package:casa_futuro_colaborador/integration/backend/session_store.dart';
+import 'package:casa_futuro_colaborador/integration/google/google_id_token_source.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,12 +15,14 @@ import 'support.dart';
 class FakeGoogle implements GoogleIdTokenSource {
   String? token = 'id-token-da-ana';
   bool fails = false;
+  AuthFailure? failure;
   int picks = 0;
   int signOuts = 0;
 
   @override
   Future<String?> idToken() async {
     picks++;
+    if (failure != null) throw AuthException(failure!);
     if (fails) throw const AuthException(AuthFailure.googleUnavailable);
     return token;
   }
@@ -81,13 +84,39 @@ void main() {
     expect(fake.requests.where((r) => r.url.path == '/v1/auth/sign-in/email'), isEmpty);
   });
 
-  testWidgets('desistir no seletor de contas não mostra erro nem chama o servidor', (t) async {
+  testWidgets('"cancelado" do Android (desistência ou recusa do Google): avisa, sem chamar o servidor',
+      (t) async {
     final (_, fake, store, _) = await pumpReal(t, setup: (_, g) => g.token = null);
     await tapText(t, button);
     expect(find.text(button), findsOneWidget);
-    expect(find.textContaining('Google agora'), findsNothing);
+    expect(find.textContaining('O login com Google não foi concluído'), findsOneWidget);
     expect(fake.requests, isEmpty);
     expect(store.value, isNull);
+  });
+
+  testWidgets('recusa do Google por configuração: mensagem própria', (t) async {
+    final (_, fake, _, _) = await pumpReal(t, setup: (_, g) => g.failure = AuthFailure.googleNotConfigured);
+    await tapText(t, button);
+    expect(find.textContaining('O Google não liberou o login para este aplicativo'), findsOneWidget);
+    expect(fake.requests, isEmpty);
+  });
+
+  testWidgets('tocar no Google depois de errar o formulário limpa os avisos de campo e mantém o e-mail',
+      (t) async {
+    await pumpReal(t, setup: (_, g) => g.token = null);
+    await t.enterText(find.byType(TextFormField).first, 'ana@casadofuturo.com.br');
+    await tapText(t, 'Entrar');
+    expect(find.text('Informe a senha.'), findsOneWidget);
+    await tapText(t, button);
+    expect(find.text('Informe a senha.'), findsNothing);
+    expect(find.text('ana@casadofuturo.com.br'), findsOneWidget);
+  });
+
+  test('sinais de credencial Android errada no texto do erro do Google', () {
+    expect(looksLikeGoogleMisconfiguration('[16] Account reauth failed.'), isTrue);
+    expect(looksLikeGoogleMisconfiguration('[28444] Developer console is not set up correctly.'), isTrue);
+    expect(looksLikeGoogleMisconfiguration('activity is cancelled by the user.'), isFalse);
+    expect(looksLikeGoogleMisconfiguration(null), isFalse);
   });
 
   testWidgets('conta do Google sem cadastro: mensagem clara, conta esquecida para tentar outra',

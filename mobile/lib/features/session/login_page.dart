@@ -58,6 +58,18 @@ class _LoginPageState extends State<LoginPage> {
     await services.signIn(email: email, password: password);
   }
 
+  /// Login pelo Google não usa o formulário: a senha digitada é descartada e
+  /// os avisos de campo ("Informe a senha.") somem, para não parecer que o
+  /// Google está pedindo senha.
+  void _startGoogle(AppServices services) {
+    final email = _email.text;
+    setState(() => _tried = false);
+    _form.currentState?.reset();
+    _email.text = email;
+    _password.clear();
+    services.signInWithGoogle();
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
@@ -123,9 +135,7 @@ class _LoginPageState extends State<LoginPage> {
                       onPressed: busy
                           ? null
                           : () {
-                              // A senha digitada não acompanha o login pelo Google.
-                              _password.clear();
-                              services.signInWithGoogle();
+                              _startGoogle(services);
                             }),
                 ],
                 Note(real

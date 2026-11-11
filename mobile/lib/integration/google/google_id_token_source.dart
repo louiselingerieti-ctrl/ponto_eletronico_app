@@ -2,6 +2,16 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../features/session/session_models.dart';
 
+/// Credencial Android errada no Google Cloud (SHA-1 ou pacote que não batem
+/// com o APK) chega do Android como "cancelado" DEPOIS de a pessoa escolher a
+/// conta, e o plugin não diferencia isso de uma desistência (README do
+/// google_sign_in_android, "Troubleshooting"). Quando o texto do erro traz os
+/// sinais conhecidos dessa recusa, dá para avisar com certeza.
+bool looksLikeGoogleMisconfiguration(String? description) {
+  final d = (description ?? '').toLowerCase();
+  return d.contains('reauth') || d.contains('[16]') || d.contains('28444') || d.contains('developer console');
+}
+
 /// Identidade do Google pelo plugin oficial (Android: Credential Manager).
 ///
 /// O app só pede a IDENTIDADE: nenhum escopo extra, nenhum acesso a dados do
@@ -31,7 +41,17 @@ class PluginGoogleIdTokenSource implements GoogleIdTokenSource {
       if (token == null || token.isEmpty) throw const AuthException(AuthFailure.googleUnavailable);
       return token;
     } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        if (looksLikeGoogleMisconfiguration(e.description)) {
+          throw const AuthException(AuthFailure.googleNotConfigured);
+        }
+        return null;
+      }
+      if (e.code == GoogleSignInExceptionCode.clientConfigurationError ||
+          e.code == GoogleSignInExceptionCode.providerConfigurationError) {
+        _ready = null;
+        throw const AuthException(AuthFailure.googleNotConfigured);
+      }
       // Inicialização que falhou pode ser tentada de novo no próximo toque.
       _ready = null;
       throw const AuthException(AuthFailure.googleUnavailable);
