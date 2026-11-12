@@ -338,6 +338,25 @@ Pedido da usuária: o mesmo login com Google do portal, também no app.
   mostra o SHA-1 do APK gerado.
 - O workflow não publica em loja nem distribui o APK: só gera o arquivo.
 
+### Checagem de rosto quebrava só no APK de release (12/11/2026)
+
+No celular, com a permissão já resolvida, a foto voltava com
+"Não foi possível conferir a foto agora. (código: face:error)".
+
+- **Causa:** no build de release o R8 remove os construtores que o ML Kit
+  usa por reflexão para se registrar (`FaceRegistrar.<init>`,
+  `CommonComponentRegistrar.<init>`, `VisionCommonRegistrar.<init>` →
+  `NoSuchMethodException` no log). A checagem então falha com
+  NullPointerException, que o Flutter devolve como código `error`. Builds de
+  debug não passam pelo R8, por isso o teste anterior no emulador funcionou.
+- **Reproduzido** no emulador com um APK em modo release: mesmo
+  `code=error`.
+- **Correção:** `android/app/proguard-rules.pro` mantém o ML Kit e é ligado
+  ao release em `build.gradle.kts`. Com ele, o mesmo APK de release no
+  emulador rodou a checagem sem erro ("0 rostos" na imagem falsa).
+- Um teste de arquitetura falha se as regras forem removidas.
+- **Ainda não testado num celular de verdade.**
+
 ### Permissão da câmera pedida pelo app (12/11/2026)
 
 A foto estava sendo recusada no celular com o aviso genérico "Câmera
