@@ -59,13 +59,26 @@ void main() {
       for (final scale in [1.0, 1.3]) {
         testWidgets('$name, fonte ×$scale: todas as telas sem corte', (t) async {
           await pumpApp(t, size: size, textScale: scale);
-          for (final nav in ['Histórico', 'Solicitar', 'Áreas', 'Perfil', 'Início']) {
+          for (final nav in ['Histórico', 'Registrar', 'Solicitações', 'Perfil', 'Início']) {
             await tapNav(t, nav);
             expect(t.takeException(), isNull, reason: nav);
           }
-          await tapText(t, 'Ver sincronização');
+          await tapText(t, 'Ver todas');
+          expect(t.takeException(), isNull, reason: 'áreas');
+          await tapNav(t, 'Início');
+          await tapText(t, 'Ver detalhes');
           expect(t.takeException(), isNull, reason: 'sincronização');
-          await tapNav(t, 'Solicitar');
+          // + Registrar, todas as etapas.
+          await tapNav(t, 'Registrar');
+          await tapText(t, 'Tirar foto (simulação)');
+          expect(t.takeException(), isNull, reason: 'conferir foto');
+          await tapText(t, 'Usar esta foto');
+          expect(t.takeException(), isNull, reason: 'Entrada ou Saída');
+          await chooseKind(t, 'Saída');
+          expect(t.takeException(), isNull, reason: 'confirmar');
+          await tapText(t, 'Confirmar saída (simulação)');
+          expect(t.takeException(), isNull, reason: 'saída salva');
+          await tapNav(t, 'Solicitações');
           await tapText(t, 'Nova solicitação');
           expect(t.takeException(), isNull, reason: 'formulário');
           await tapNav(t, 'Perfil');
@@ -104,7 +117,7 @@ void main() {
       await pumpApp(t, size: size);
       await t.drag(find.byType(SingleChildScrollView).first, const Offset(0, -3000));
       await t.pumpAndSettle();
-      final note = t.getRect(find.textContaining('não confirma a jornada'));
+      final note = t.getRect(find.textContaining('não confirma automaticamente'));
       final navTop = t.getRect(find.text('Início').last).top - 10 - 20 - 5 - 8;
       expect(note.bottom <= navTop, isTrue, reason: '$size: nota $note, menu em $navTop');
     }
@@ -135,14 +148,14 @@ void main() {
   testWidgets('tela larga: conteúdo em coluna central de até 560', (t) async {
     await pumpApp(t, size: const Size(1280, 800));
     final card = t.getRect(find.ancestor(
-        of: find.text('Ver sincronização'), matching: find.byType(Surface)).first);
+        of: find.text('Ver todas'), matching: find.byType(Surface)).first);
     expect(card.width <= 560, isTrue, reason: '$card');
     expect((card.center.dx - 640).abs() < 1, isTrue, reason: 'centralizado');
   });
 
   testWidgets('teclado aberto: formulário rola e o campo em foco fica visível', (t) async {
     await pumpApp(t, size: const Size(360, 800));
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Nova solicitação');
     t.view.viewInsets = const FakeViewPadding(bottom: 320);
     addTearDown(t.view.resetViewInsets);

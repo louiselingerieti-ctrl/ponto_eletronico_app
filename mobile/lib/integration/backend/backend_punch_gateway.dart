@@ -11,8 +11,9 @@ import 'session_store.dart';
 ///
 /// Contrato (backend, módulo punches, migração 0010):
 /// - GET  /v1/me/attendance                 → escala de 7 dias, áreas e pontos de hoje
-/// - POST /v1/me/punches                    → etapa 1 (localização): ponto provisório
-/// - POST /v1/me/punches/{id}/face          → etapa 2 (selfie): confirma
+/// - POST /v1/me/punches                    → ponto provisório com a localização
+/// - POST /v1/me/punches/{id}/face          → a foto confirma o ponto
+/// O app só chama as duas escritas na confirmação, uma em seguida da outra.
 /// Todas levam `X-Tenant-Id`. As escritas levam `Origin` igual à origem da
 /// API, que o servidor aceita para o app nativo.
 ///
@@ -123,7 +124,20 @@ class BackendPunchGateway implements PunchGateway {
       nextKind: PunchKind.parse(raw['nextKind']),
       days: [for (final d in days) _day(d)],
       punchesToday: [for (final p in punches) _punch(p)],
-      hasArea: areas.isNotEmpty,
+      areas: [for (final a in areas) _area(a)],
+    );
+  }
+
+  static WorkArea _area(Object? raw) {
+    if (raw is! Map || raw['id'] is! String || raw['name'] is! String || raw['latitude'] is! num || raw['longitude'] is! num || raw['radiusM'] is! num) {
+      throw const PunchException(PunchFailure.server);
+    }
+    return WorkArea(
+      id: raw['id'] as String,
+      name: raw['name'] as String,
+      latitude: (raw['latitude'] as num).toDouble(),
+      longitude: (raw['longitude'] as num).toDouble(),
+      radiusM: (raw['radiusM'] as num).round(),
     );
   }
 

@@ -24,4 +24,12 @@ abstract final class Lucide {
   static const chevronDown = IconData(0xe071, fontFamily: _f);
   static const circleAlert = IconData(0xe07b, fontFamily: _f);
   static const inbox = IconData(0xe0fa, fontFamily: _f);
+  static const messageSquare = IconData(0xe11b, fontFamily: _f);
+  static const camera = IconData(0xe068, fontFamily: _f);
+  static const cameraOff = IconData(0xe069, fontFamily: _f);
+  static const mapPinOff = IconData(0xe2a6, fontFamily: _f);
+  static const mapPinCheck = IconData(0xe614, fontFamily: _f);
+  static const chevronRight = IconData(0xe073, fontFamily: _f);
+  static const hand = IconData(0xe1d7, fontFamily: _f);
+  static const circleCheck = IconData(0xe226, fontFamily: _f);
 }

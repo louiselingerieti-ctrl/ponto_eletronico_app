@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../registration/registration_models.dart';
 import 'punch_models.dart';
 
 /// O que o registro de ponto precisa do mundo de fora (servidor e aparelho).
@@ -17,54 +20,9 @@ class PunchDeps {
   final String Function() newId;
 }
 
-enum PunchStep {
-  /// Lendo a localização e criando o ponto provisório.
-  locating,
-
-  /// Localização registrada; falta a selfie.
-  located,
-
-  /// Câmera aberta ou selfie sendo enviada.
-  confirming,
-
-  /// Ponto confirmado.
-  done,
-
-  /// A janela da selfie acabou: é preciso registrar de novo.
-  expired,
-
-  /// O servidor não aceitou a etapa 1.
-  failed,
-}
-
-/// Um registro de ponto em andamento.
-@immutable
-class PunchFlow {
-  const PunchFlow({required this.link, required this.kind, required this.step, this.record, this.locationProblem, this.selfieProblem, this.failure});
-  final LinkAttendance link;
-  final PunchKind kind;
-  final PunchStep step;
-  final PunchRecord? record;
-
-  /// O aparelho não entregou a localização: o ponto seguiu sem ela.
-  final LocationProblem? locationProblem;
-  final SelfieProblem? selfieProblem;
-  final PunchFailure? failure;
-
-  PunchFlow copy({PunchStep? step, PunchRecord? record, LocationProblem? locationProblem, SelfieProblem? selfieProblem, PunchFailure? failure}) => PunchFlow(
-        link: link,
-        kind: kind,
-        step: step ?? this.step,
-        record: record ?? this.record,
-        locationProblem: locationProblem ?? this.locationProblem,
-        selfieProblem: selfieProblem,
-        failure: failure,
-      );
-}
-
-/// Estado do ponto REAL: a jornada de hoje, os avisos e o registro em duas
-/// etapas. Não guarda coordenadas nem a selfie: elas só passam por aqui a
-/// caminho do servidor.
+/// Estado do ponto REAL: a jornada de hoje, os avisos e as operações do
+/// + Registrar (validar a localização, tirar a foto, gravar). Não guarda
+/// coordenadas nem a foto: elas só passam por aqui a caminho do servidor.
 class PunchController extends ChangeNotifier {
   PunchController(this._d);
   final PunchDeps _d;
@@ -84,11 +42,15 @@ class PunchController extends ChangeNotifier {
   /// Quantos avisos estão agendados para os próximos dias.
   int get scheduledReminders => _scheduled;
 
-  PunchFlow? _flow;
-  PunchFlow? get flow => _flow;
+  /// Pontos provisórios já criados no servidor e ainda sem foto, por
+  /// tentativa: tentar de novo reaproveita o mesmo (não cria outro).
+  final _provisional = <String, PunchRecord>{};
 
   /// Agora, em UTC, pelo mesmo relógio usado nas regras (injetável nos testes).
   DateTime nowUtc() => _d.now().toUtc();
+
+  /// Agora, pelo mesmo relógio (validade da localização e da foto).
+  DateTime now() => _d.now();
 
   /// Carrega (ou recarrega) a jornada do vínculo e reagenda os avisos.
   Future<void> load(String tenantId) async {
@@ -147,69 +109,110 @@ class PunchController extends ChangeNotifier {
 
   // ------------------------------------------------------------- registro
 
-  /// Etapa 1: localização. Se já existe um ponto provisório dentro da janela,
-  /// retoma dele (não cria outro).
-  Future<void> start(LinkAttendance link) async {
-    final tenantId = _tenantId;
-    if (tenantId == null || _flow?.step == PunchStep.locating || _flow?.step == PunchStep.confirming) return;
-    final pending = link.pendingAt(_d.now().toUtc());
-    if (pending != null) {
-      _flow = PunchFlow(link: link, kind: pending.kind, step: PunchStep.located, record: pending);
-      notifyListeners();
-      return;
+  /// A localização e a foto valem pela janela que o servidor dá para a foto.
+  Duration get evidenceValidity => Duration(seconds: _attendance?.faceWindowSeconds ?? 300);
+
+  /// 1. Busca a configuração vigente (áreas do vínculo) e confere a posição
+  /// atual do aparelho contra ela. Não grava nada no servidor.
+  Future<LocationCheck> validateLocation() async {
+    final t = _tenantId;
+    if (t == null) return const LocationCheck.failed(LocationFailure.sessionExpired);
+    // Sempre a configuração vigente: sem conseguir buscá-la, não valida.
+    await load(t);
+    final a = _attendance;
+    if (a == null || _error != null) {
+      return LocationCheck.failed(_error == PunchFailure.sessionExpired ? LocationFailure.sessionExpired : LocationFailure.network);
     }
-    final kind = link.nextKind;
-    _flow = PunchFlow(link: link, kind: kind, step: PunchStep.locating);
-    notifyListeners();
-    final where = await _d.location.current();
-    try {
-      final record = await _d.gateway.register(tenantId, employmentLinkId: link.employmentLinkId, clientEventId: _d.newId(), kind: kind, location: where.location);
-      _flow = PunchFlow(link: link, kind: kind, step: PunchStep.located, record: record, locationProblem: where.problem);
-    } on PunchException catch (e) {
-      _flow = PunchFlow(link: link, kind: kind, step: PunchStep.failed, failure: e.failure, locationProblem: where.problem);
+    if (a.links.isEmpty) return const LocationCheck.failed(LocationFailure.noLink);
+    final links = a.links.where((l) => l.canPunch).toList();
+    if (links.isEmpty) return const LocationCheck.failed(LocationFailure.companyInactive);
+    if (links.every((l) => l.areas.isEmpty)) return const LocationCheck.failed(LocationFailure.noArea);
+
+    final r = await _d.location.current();
+    final loc = r.location;
+    if (loc == null) {
+      return LocationCheck.failed(switch (r.problem) {
+        LocationProblem.denied => LocationFailure.denied,
+        LocationProblem.deniedForever => LocationFailure.blocked,
+        LocationProblem.serviceOff => LocationFailure.serviceOff,
+        _ => LocationFailure.unavailable,
+      });
     }
-    notifyListeners();
+
+    // A área mais próxima (pelo centro) entre as autorizadas.
+    (LinkAttendance, WorkArea, double)? best;
+    for (final l in links) {
+      for (final w in l.areas) {
+        final d = distanceMeters(loc.latitude, loc.longitude, w.latitude, w.longitude);
+        if (best == null || d < best.$3) best = (l, w, d);
+      }
+    }
+    final (link, area, d) = best!;
+    // Precisão pior que o raio da área: não dá para afirmar dentro nem fora.
+    final acc = loc.accuracyM;
+    if (acc == null || acc > area.radiusM) return const LocationCheck.failed(LocationFailure.imprecise);
+    if (d > area.radiusM) return LocationCheck.failed(LocationFailure.outside, areaName: area.name, distanceM: d.round());
+    return LocationCheck.ok(ValidatedLocation(
+      areaName: area.name,
+      companyName: link.companyName,
+      linkId: link.employmentLinkId,
+      location: loc,
+      at: _d.now(),
+      suggested: link.nextKind,
+    ));
   }
 
-  /// Etapa 2: selfie. Problema com a foto permite tentar de novo enquanto a
-  /// janela estiver aberta.
-  Future<void> takeSelfie() async {
-    final tenantId = _tenantId;
-    final f = _flow;
-    final record = f?.record;
-    if (tenantId == null || f == null || record == null || f.step != PunchStep.located) return;
-    if (record.faceDeadline != null && !_d.now().toUtc().isBefore(record.faceDeadline!)) {
-      _flow = f.copy(step: PunchStep.expired);
-      notifyListeners();
-      return;
-    }
-    _flow = f.copy(step: PunchStep.confirming);
-    notifyListeners();
+  /// 2. Câmera frontal + checagem de que há um rosto (no aparelho).
+  Future<PhotoResult> takePhoto() async {
     final shot = await _d.camera.capture();
-    if (shot.bytes == null) {
-      _flow = f.copy(step: PunchStep.located, selfieProblem: shot.problem);
-      notifyListeners();
-      return;
-    }
+    final bytes = shot.bytes;
+    if (bytes == null) return PhotoResult.failed(shot.problem ?? SelfieProblem.unavailable);
+    return PhotoResult.ok(CapturedPhoto(at: _d.now(), bytes: bytes));
+  }
+
+  /// 3. Grava: cria o ponto com a localização e, em seguida, confirma com a
+  /// foto. Só diz que deu certo depois da confirmação do servidor.
+  Future<CommitOutcome> commit(RegistrationDraft draft) async {
+    final t = _tenantId;
+    final bytes = draft.photo.bytes;
+    final linkId = draft.location.linkId;
+    if (t == null) return CommitOutcome.failed(PunchFailure.sessionExpired.message, CommitRecovery.none);
+    if (bytes == null || linkId == null) return const CommitOutcome.failed('Faltam a localização ou a foto deste registro.', CommitRecovery.restart);
     try {
-      final confirmed = await _d.gateway.confirm(tenantId, record.id, shot.bytes!);
-      _flow = f.copy(step: PunchStep.done, record: confirmed);
-    } on PunchException catch (e) {
-      _flow = switch (e.failure) {
-        PunchFailure.windowExpired => f.copy(step: PunchStep.expired),
+      final record = _provisional[draft.attemptId] ??
+          await _d.gateway.register(t, employmentLinkId: linkId, clientEventId: draft.attemptId, kind: draft.kind, location: draft.location.location);
+      _provisional[draft.attemptId] = record;
+      PunchRecord done;
+      try {
+        done = await _d.gateway.confirm(t, record.id, bytes);
+      } on PunchException catch (e) {
         // Outra tentativa já tinha confirmado: o ponto vale.
-        PunchFailure.alreadyConfirmed => f.copy(step: PunchStep.done),
-        _ => f.copy(step: PunchStep.located, failure: e.failure),
+        if (e.failure != PunchFailure.alreadyConfirmed) rethrow;
+        done = record;
+      }
+      _provisional.remove(draft.attemptId);
+      await refresh();
+      return CommitOutcome.ok(RegistrationReceipt(
+        kind: done.kind,
+        recordedAt: done.recordedAt,
+        areaName: done.areaName ?? draft.location.areaName,
+        received: true,
+        serverNote: done.flagged ? '${done.locationText}. O ponto fica sinalizado para o RH avaliar.' : null,
+      ));
+    } on PunchException catch (e) {
+      return switch (e.failure) {
+        PunchFailure.windowExpired => () {
+            _provisional.remove(draft.attemptId);
+            return CommitOutcome.failed(e.failure.message, CommitRecovery.restart);
+          }(),
+        PunchFailure.invalidSelfie => () {
+            _provisional.remove(draft.attemptId);
+            return CommitOutcome.failed(e.failure.message, CommitRecovery.retakePhoto);
+          }(),
+        PunchFailure.network || PunchFailure.server => CommitOutcome.failed('${e.failure.message} O ponto ainda não foi registrado.', CommitRecovery.retry),
+        _ => CommitOutcome.failed(e.failure.message, CommitRecovery.none),
       };
     }
-    notifyListeners();
-    if (_flow?.step == PunchStep.done) await refresh();
-  }
-
-  /// Fecha o registro em andamento (o ponto provisório sem selfie não conta).
-  void closeFlow() {
-    _flow = null;
-    notifyListeners();
   }
 
   /// Troca de conta ou saída: nada da pessoa anterior fica aqui, e os avisos
@@ -217,10 +220,20 @@ class PunchController extends ChangeNotifier {
   Future<void> reset() async {
     _tenantId = null;
     _attendance = null;
-    _flow = null;
+    _provisional.clear();
     _error = null;
     _scheduled = 0;
     notifyListeners();
     await _d.reminders.clear();
   }
+}
+
+/// Distância em metros entre dois pontos (fórmula de haversine).
+double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  const r = 6371000.0;
+  double rad(double d) => d * math.pi / 180;
+  final dLat = rad(lat2 - lat1);
+  final dLon = rad(lon2 - lon1);
+  final h = math.pow(math.sin(dLat / 2), 2) + math.cos(rad(lat1)) * math.cos(rad(lat2)) * math.pow(math.sin(dLon / 2), 2);
+  return 2 * r * math.asin(math.sqrt(h));
 }

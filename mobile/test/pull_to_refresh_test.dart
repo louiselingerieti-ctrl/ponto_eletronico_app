@@ -57,13 +57,12 @@ void main() {
     expect(find.text('Casa do Futuro Centro'), findsWidgets);
   });
 
-  testWidgets('funciona nas cinco áreas, mesmo quando o conteúdo cabe na tela', (t) async {
+  testWidgets('funciona nas áreas de acompanhamento, mesmo quando o conteúdo cabe na tela', (t) async {
     final fake = await pumpSignedIn(t);
     const pages = {
       'Início': 'Bom dia, Ana.',
       'Histórico': 'Meu histórico',
-      'Solicitar': 'Minhas solicitações',
-      'Áreas': 'Minhas áreas',
+      'Solicitações': 'Minhas solicitações',
       'Perfil': 'Meu perfil',
     };
     for (final MapEntry(key: nav, value: title) in pages.entries) {

@@ -54,11 +54,19 @@ Future<void> tapText(WidgetTester t, String text) async {
   await t.ensureVisible(f.first);
   await t.pumpAndSettle();
   await t.tap(f.first);
-  await t.pumpAndSettle();
+  await settleSimulated(t);
 }
 
 Future<void> tapNav(WidgetTester t, String label) async {
   await t.tap(find.text(label).last);
+  await settleSimulated(t);
+}
+
+/// Espera as etapas simuladas da demonstração (temporizadores de até 1 s),
+/// que o pumpAndSettle sozinho não avança quando a tela está parada.
+Future<void> settleSimulated(WidgetTester t) async {
+  await t.pumpAndSettle();
+  await t.pump(const Duration(seconds: 1));
   await t.pumpAndSettle();
 }
 
@@ -79,4 +87,13 @@ Future<void> capture(WidgetTester t, String name) async {
     f.parent.createSync(recursive: true);
     f.writeAsBytesSync(data!.buffer.asUint8List());
   });
+}
+
+/// + Registrar: toca no cartão Entrada ou Saída (rola até ele antes).
+Future<void> chooseKind(WidgetTester t, String kind) async {
+  final f = find.text(kind).last;
+  await t.ensureVisible(f);
+  await t.pumpAndSettle();
+  await t.tap(f);
+  await settleSimulated(t);
 }

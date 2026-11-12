@@ -20,8 +20,10 @@ política ainda **não definida**.
 ## App do colaborador Casa do Futuro — demonstração visual (Etapa 1)
 
 [mobile/](mobile/) replica em Flutter, sem WebView, a interface aprovada no
-relatório v1.0. Telas: Início, Histórico, + Solicitar (lista, formulário e
-detalhe), Áreas, Perfil, Permissões, Sincronização e Login.
+relatório v2.0 (12/11/2026). Menu: Início · Histórico · **+ Registrar** ·
+Solicitações · Perfil. Áreas abre pelo Início (e pelo Perfil). O + Registrar
+segue a ordem obrigatória: validar a localização → tirar a foto → escolher
+Entrada/Saída → confirmar o ponto.
 
 - Usa **dados fictícios** (Ana Souza, Loja Centro, pedidos de exemplo).
 - Fila e envio usam o núcleo real sobre memória **sem cifra** e servidor

@@ -23,20 +23,20 @@ void main() {
 
   testWidgets('03-solicitacoes', (t) async {
     await pumpApp(t, size: size);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await capture(t, '03-solicitacoes');
   });
 
   testWidgets('04-nova-solicitacao', (t) async {
     await pumpApp(t, size: size);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Nova solicitação');
     await capture(t, '04-nova-solicitacao');
   });
 
   testWidgets('05-pedido-enviado', (t) async {
     await pumpApp(t, size: size);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Nova solicitação');
     await t.enterText(find.byType(TextFormField), 'Cheguei às 08:00 e a entrada não foi detectada no aparelho.');
     await tapText(t, 'Enviar solicitação de demonstração');
@@ -45,7 +45,7 @@ void main() {
 
   testWidgets('06-pedido-respondido', (t) async {
     await pumpApp(t, size: size);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await t.tap(find.text('Ver solicitação e resposta').last);
     await t.pumpAndSettle();
     await capture(t, '06-pedido-respondido');
@@ -53,7 +53,7 @@ void main() {
 
   testWidgets('07-areas', (t) async {
     await pumpApp(t, size: size);
-    await tapNav(t, 'Áreas');
+    await tapText(t, 'Ver todas');
     await capture(t, '07-areas');
   });
 
@@ -79,7 +79,7 @@ void main() {
 
   testWidgets('11-sincronizacao', (t) async {
     await pumpApp(t, size: size);
-    await tapText(t, 'Ver sincronização');
+    await tapText(t, 'Ver detalhes');
     await capture(t, '11-sincronizacao');
   });
 
@@ -87,7 +87,7 @@ void main() {
     final s = await pumpApp(t, size: size);
     s.backend.setOffline(true);
     await t.pumpAndSettle();
-    await tapText(t, 'Ver sincronização');
+    await tapText(t, 'Ver detalhes');
     await capture(t, '12-offline');
   });
 
@@ -95,7 +95,7 @@ void main() {
     final s = await pumpApp(t, size: size);
     s.backend.setOffline(true);
     await t.pumpAndSettle();
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Nova solicitação');
     await t.enterText(find.byType(TextFormField), 'A detecção falhou durante o período sem conexão.');
     await tapText(t, 'Guardar rascunho de demonstração');
@@ -134,7 +134,7 @@ void main() {
 
   testWidgets('ctx-tablet-solicitacoes', (t) async {
     await pumpApp(t, size: const Size(768, 1024));
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await capture(t, 'ctx-tablet-solicitacoes');
   });
 
@@ -145,7 +145,7 @@ void main() {
 
   testWidgets('16-menu-compacto', (t) async {
     await pumpApp(t, size: const Size(320, 1180), dark: true);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await capture(t, '16-menu-compacto');
   });
 }
