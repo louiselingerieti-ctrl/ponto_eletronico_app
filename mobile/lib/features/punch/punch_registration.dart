@@ -25,4 +25,7 @@ class PunchRegistrationPort implements RegistrationPort {
 
   @override
   Future<CommitOutcome> commit(RegistrationDraft draft) => _punch.commit(draft);
+
+  @override
+  Future<void> openAppSettings() => _punch.openAppSettings();
 }

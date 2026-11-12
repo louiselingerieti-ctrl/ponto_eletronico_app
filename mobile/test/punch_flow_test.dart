@@ -135,11 +135,15 @@ final tinyPng = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADU
 class FakeCamera implements SelfieCamera {
   SelfieResult result = SelfieResult.ok(tinyPng);
   int shots = 0;
+  int settings = 0;
   @override
   Future<SelfieResult> capture() async {
     shots++;
     return result;
   }
+
+  @override
+  Future<void> openSettings() async => settings++;
 }
 
 class FakeReminders implements PunchReminders {
@@ -488,6 +492,36 @@ void main() {
       await tapText(t, 'Tentar novamente');
       expect(find.text('Confira sua foto'), findsOneWidget);
       expect(writes(server), isEmpty);
+    });
+
+    testWidgets('câmera negada: explica, deixa tentar de novo e abre as configurações do app', (t) async {
+      final (_, server, _, camera, _) = await pumpReal(t, setup: (_, _, c, _) => c.result = const SelfieResult.failed(SelfieProblem.cameraDenied, detail: 'picker:camera_access_denied'));
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
+      expect(find.text('Permita a câmera'), findsOneWidget);
+      expect(find.textContaining('(código: picker:camera_access_denied)'), findsOneWidget);
+      await tapText(t, 'Abrir configurações do app');
+      expect(camera.settings, 1);
+      camera.result = SelfieResult.ok(tinyPng);
+      await tapText(t, 'Tentar novamente');
+      expect(find.text('Confira sua foto'), findsOneWidget);
+      expect(writes(server), isEmpty);
+    });
+
+    testWidgets('falha na checagem da foto não é confundida com câmera negada', (t) async {
+      await pumpReal(t, setup: (_, _, c, _) => c.result = const SelfieResult.failed(SelfieProblem.checkFailed, detail: 'face:MlKitException'));
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
+      expect(find.text('Permita a câmera'), findsNothing);
+      expect(find.textContaining('Não foi possível conferir a foto agora.'), findsOneWidget);
+      expect(find.textContaining('(código: face:MlKitException)'), findsOneWidget);
+    });
+
+    testWidgets('localização bloqueada oferece abrir as configurações do app', (t) async {
+      final (_, _, _, camera, _) = await pumpReal(t, setup: (_, l, _, _) => l.result = const LocationResult.failed(LocationProblem.deniedForever));
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Abrir configurações do app');
+      expect(camera.settings, 1);
     });
 
     testWidgets('tirar outra foto abre a câmera de novo', (t) async {

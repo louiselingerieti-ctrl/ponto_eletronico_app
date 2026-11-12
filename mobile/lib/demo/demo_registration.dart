@@ -44,6 +44,10 @@ class DemoRegistrationPort implements RegistrationPort {
     return PhotoResult.ok(CapturedPhoto(at: _backend().now()));
   }
 
+  /// Demonstração: não há configurações reais a abrir.
+  @override
+  Future<void> openAppSettings() async {}
+
   @override
   Future<CommitOutcome> commit(RegistrationDraft draft) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));

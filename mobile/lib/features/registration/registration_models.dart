@@ -91,10 +91,15 @@ class CapturedPhoto {
 
 @immutable
 class PhotoResult {
-  const PhotoResult.ok(CapturedPhoto this.photo) : problem = null;
-  const PhotoResult.failed(SelfieProblem this.problem) : photo = null;
+  const PhotoResult.ok(CapturedPhoto this.photo)
+      : problem = null,
+        detail = null;
+  const PhotoResult.failed(SelfieProblem this.problem, {this.detail}) : photo = null;
   final CapturedPhoto? photo;
   final SelfieProblem? problem;
+
+  /// Código curto para diagnóstico (mostrado junto do aviso).
+  final String? detail;
 }
 
 /// O que vai para a confirmação. [attemptId] é estável enquanto a pessoa
@@ -167,4 +172,7 @@ abstract interface class RegistrationPort {
   Future<LocationCheck> validateLocation();
   Future<PhotoResult> takePhoto();
   Future<CommitOutcome> commit(RegistrationDraft draft);
+
+  /// Abre as configurações do app no celular (liberar câmera ou localização).
+  Future<void> openAppSettings();
 }

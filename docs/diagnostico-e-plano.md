@@ -338,6 +338,24 @@ Pedido da usuária: o mesmo login com Google do portal, também no app.
   mostra o SHA-1 do APK gerado.
 - O workflow não publica em loja nem distribui o APK: só gera o arquivo.
 
+### Permissão da câmera pedida pelo app (12/11/2026)
+
+A foto estava sendo recusada no celular com o aviso genérico "Câmera
+indisponível — Permita o uso da câmera…", que o app usava para três falhas
+diferentes. No emulador o caminho todo funcionou (câmera do sistema, foto,
+checagem de rosto), então a causa no celular ainda não está confirmada.
+
+- O manifesto passa a declarar `CAMERA` (com `uses-feature` não
+  obrigatório). Com isso o plugin **pede a permissão na hora da foto**
+  (diálogo do Android), como o relatório v2 pede. Conferido no emulador:
+  o diálogo aparece; "Não permitir" vira o aviso "Permita a câmera";
+  "Permitir" abre a câmera.
+- Cada falha tem aviso próprio e um código curto no fim (ex.:
+  `picker:camera_access_denied`, `face:…`, `read:…`), sem imagem nem dado
+  pessoal, para identificar o problema no aparelho.
+- Câmera ou localização negadas oferecem "Abrir configurações do app".
+- Tamanho mínimo do rosto na checagem: de 20% para 15% da imagem.
+
 ### Relatório v2.0: menu novo e + Registrar em quatro etapas (12/11/2026)
 
 Pedido da usuária, com o relatório "App do colaborador — todas as páginas e

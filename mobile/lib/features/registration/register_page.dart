@@ -81,7 +81,11 @@ class RegisterPage extends StatelessWidget {
             title: f.title,
             message: '${f.message}$outside',
             live: true,
-            children: [PrimaryButton('Tentar novamente', onPressed: r.begin)],
+            children: [
+              PrimaryButton('Tentar novamente', onPressed: r.begin),
+              if (f == LocationFailure.denied || f == LocationFailure.blocked)
+                SecondaryButton('Abrir configurações do app', onPressed: r.openAppSettings),
+            ],
           ),
           Align(
             alignment: Alignment.centerLeft,
@@ -92,16 +96,31 @@ class RegisterPage extends StatelessWidget {
       case RegStep.photo:
       case RegStep.capturing:
         final busy = r.step == RegStep.capturing;
-        final cameraOff = r.photoProblem == SelfieProblem.unavailable;
+        final problem = r.photoProblem;
+        final code = r.photoDetail == null ? '' : ' (código: ${r.photoDetail})';
+        final denied = problem == SelfieProblem.cameraDenied;
+        final cameraOff = problem == SelfieProblem.unavailable || problem == SelfieProblem.noCamera;
         return [
           const PageIntro('Agora, tire sua foto', 'Enquadre seu rosto para continuar.'),
           const _Steps(current: 2),
           _Evidence(icon: Lucide.mapPinCheck, title: 'Localização validada', subtitle: '${r.location!.areaName} · consulta deste registro'),
-          if (cameraOff)
+          if (denied)
+            _Panel(
+              icon: Lucide.cameraOff,
+              title: 'Permita a câmera',
+              message: 'Sem acesso à câmera não é possível tirar a foto, e sem foto o ponto não pode ser registrado. '
+                  'Toque em "Tentar novamente" e escolha Permitir. Se o celular não perguntar mais, libere a câmera nas configurações do app.$code',
+              live: true,
+              children: [
+                PrimaryButton(busy ? 'Abrindo a câmera…' : 'Tentar novamente', onPressed: busy ? null : r.takePhoto),
+                SecondaryButton('Abrir configurações do app', onPressed: busy ? null : r.openAppSettings),
+              ],
+            )
+          else if (cameraOff)
             _Panel(
               icon: Lucide.cameraOff,
               title: 'Câmera indisponível',
-              message: 'Permita o uso da câmera para tirar a foto. Sem foto, o ponto não pode ser registrado.',
+              message: '${problem!.message} Sem foto, o ponto não pode ser registrado.$code',
               live: true,
               children: [SecondaryButton(busy ? 'Abrindo a câmera…' : 'Tentar novamente', onPressed: busy ? null : r.takePhoto)],
             )
@@ -112,7 +131,7 @@ class RegisterPage extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 12),
                 child: Semantics(
                   liveRegion: true,
-                  child: StatusBadge((r.photoProblem?.message ?? r.commitError)!, tone: BadgeTone.pending, icon: Lucide.circleAlert),
+                  child: StatusBadge(problem != null ? '${problem.message}$code' : r.commitError!, tone: BadgeTone.pending, icon: Lucide.circleAlert),
                 ),
               ),
             _IconButton(
