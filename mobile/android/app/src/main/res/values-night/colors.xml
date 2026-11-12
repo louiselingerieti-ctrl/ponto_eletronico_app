@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fundo da tela de abertura = fundo do app (escuro). -->
+    <color name="splash_background">#171918</color>
+</resources>

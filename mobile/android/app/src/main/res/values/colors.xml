@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Laranja da marca (círculo do ícone). -->
+    <color name="ic_launcher_background">#FF5A1F</color>
+    <!-- Fundo da tela de abertura = fundo do app (claro). -->
+    <color name="splash_background">#F4F5F6</color>
+</resources>
