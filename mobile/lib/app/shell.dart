@@ -32,6 +32,40 @@ class AppShellState extends State<AppShell> {
   late final _observers = {for (final t in AppTab.values) t: _StackObserver(_onStackChanged)};
   bool _nestedCanPop = false;
 
+  /// Deslizar a tela troca de área (PageView, recurso nativo do Flutter).
+  final _pages = PageController();
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  /// A página mudou por deslize (ou pelo menu): o menu acompanha.
+  void _onPageChanged(int i) {
+    final t = AppTab.values[i];
+    if (t == _tab) return;
+    setState(() {
+      _tab = t;
+      _nestedCanPop = _keys[t]!.currentState?.canPop() ?? false;
+    });
+  }
+
+  /// Leva o PageView até a área: animação curta para a vizinha; troca direta
+  /// para as distantes (sem passar pelas do meio) e com movimento reduzido.
+  void _showPage(AppTab t) {
+    if (!_pages.hasClients) return;
+    final current = (_pages.page ?? _pages.initialPage.toDouble()).round();
+    if (current == t.index) return;
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (!reduce && (current - t.index).abs() == 1) {
+      _pages.animateToPage(t.index,
+          duration: const Duration(milliseconds: 220), curve: const Cubic(0.65, 0, 0.35, 1));
+    } else {
+      _pages.jumpToPage(t.index);
+    }
+  }
+
   void _onStackChanged() {
     final can = _keys[_tab]?.currentState?.canPop() ?? false;
     if (can != _nestedCanPop && mounted) {
@@ -51,6 +85,7 @@ class AppShellState extends State<AppShell> {
       _tab = t;
       _nestedCanPop = _keys[t]!.currentState?.canPop() ?? false;
     });
+    _showPage(t);
   }
 
   /// "Voltar ao início": fecha o que estiver aberto na área atual e vai para
@@ -85,23 +120,32 @@ class AppShellState extends State<AppShell> {
           child: Column(children: [
             BrandHeader(onAvatar: () => goTab(AppTab.profile)),
             Expanded(
-              child: IndexedStack(
-                index: _tab.index,
+              child: PageView(
+                controller: _pages,
+                onPageChanged: _onPageChanged,
+                // Dentro de um detalhe ou formulário, deslizar não troca de
+                // área (evita sair sem querer); o menu continua funcionando.
+                physics: _nestedCanPop
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
                 children: [
                   for (final t in AppTab.values)
-                    // Áreas fora de foco saem da árvore de acessibilidade.
-                    ExcludeSemantics(
-                      excluding: t != _tab,
-                      // Contêiner próprio: a barreira das rotas aninhadas
-                      // (BlockSemantics) não pode apagar o cabeçalho.
-                      child: Semantics(
-                        container: true,
-                        explicitChildNodes: true,
-                        child: Navigator(
-                          key: _keys[t],
-                          observers: [_observers[t]!],
-                          onGenerateRoute: (_) =>
-                              MaterialPageRoute<void>(builder: (_) => _root(t)),
+                    // Mantém o estado da área fora da tela (rascunho, rolagem).
+                    _KeepAlive(
+                      // Áreas fora de foco saem da árvore de acessibilidade.
+                      child: ExcludeSemantics(
+                        excluding: t != _tab,
+                        // Contêiner próprio: a barreira das rotas aninhadas
+                        // (BlockSemantics) não pode apagar o cabeçalho.
+                        child: Semantics(
+                          container: true,
+                          explicitChildNodes: true,
+                          child: Navigator(
+                            key: _keys[t],
+                            observers: [_observers[t]!],
+                            onGenerateRoute: (_) =>
+                                MaterialPageRoute<void>(builder: (_) => _root(t)),
+                          ),
                         ),
                       ),
                     ),
@@ -113,6 +157,26 @@ class AppShellState extends State<AppShell> {
         bottomNavigationBar: CdfBottomNav(current: _tab, onSelect: goTab),
       ),
     );
+  }
+}
+
+/// O PageView descarta páginas fora da tela; isto as mantém vivas.
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+  final Widget child;
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
 
