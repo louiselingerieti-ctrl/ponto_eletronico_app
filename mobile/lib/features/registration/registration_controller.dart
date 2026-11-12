@@ -63,6 +63,10 @@ class RegistrationController extends ChangeNotifier {
   CapturedPhoto? get photo => _photo;
   SelfieProblem? _photoProblem;
   SelfieProblem? get photoProblem => _photoProblem;
+  String? _photoDetail;
+
+  /// Código técnico curto do último problema da câmera (diagnóstico).
+  String? get photoDetail => _photoDetail;
 
   PunchKind? _kind;
   PunchKind? get kind => _kind;
@@ -85,6 +89,7 @@ class RegistrationController extends ChangeNotifier {
     _failure = null;
     _photo = null;
     _photoProblem = null;
+    _photoDetail = null;
     _kind = null;
     _attemptId = null;
     _commitError = null;
@@ -153,6 +158,7 @@ class RegistrationController extends ChangeNotifier {
     final session = _session;
     _photo = null;
     _photoProblem = null;
+    _photoDetail = null;
     _step = RegStep.capturing;
     notifyListeners();
     final r = await p.takePhoto();
@@ -163,10 +169,15 @@ class RegistrationController extends ChangeNotifier {
     } else {
       // Desistir da câmera não é erro: só volta para tirar a foto.
       _photoProblem = r.problem == SelfieProblem.cancelled ? null : r.problem;
+      _photoDetail = _photoProblem == null ? null : r.detail;
       _step = RegStep.photo;
     }
     notifyListeners();
   }
+
+  /// Abre as configurações do app (câmera ou localização negadas). Ao
+  /// voltar, a pessoa toca em "Tentar novamente".
+  Future<void> openAppSettings() async => port?.openAppSettings();
 
   /// 2. "Usar esta foto".
   void usePhoto() {

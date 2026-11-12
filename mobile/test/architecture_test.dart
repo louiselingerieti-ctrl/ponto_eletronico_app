@@ -76,7 +76,7 @@ void main() {
     }
   });
 
-  test('manifesto Android: localização só em primeiro plano, sem câmera própria nem alarme exato', () {
+  test('manifesto Android: localização só em primeiro plano, câmera pedida na hora, sem alarme exato', () {
     final m = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     final perms = RegExp(r'android:name="(android\.permission\.[A-Z_]+)"')
         .allMatches(m)
@@ -89,7 +89,10 @@ void main() {
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.VIBRATE',
       'android.permission.RECEIVE_BOOT_COMPLETED',
+      'android.permission.CAMERA',
     });
+    // A câmera não é exigida para instalar.
+    expect(m.contains('android:name="android.hardware.camera" android:required="false"'), isTrue);
     // O app não acompanha a pessoa: nada de localização em segundo plano.
     expect(m.contains('ACCESS_BACKGROUND_LOCATION'), isFalse);
   });

@@ -29,6 +29,8 @@ class StepPort implements RegistrationPort {
   @override
   Future<PhotoResult> takePhoto() => (photo = Completer()).future;
   @override
+  Future<void> openAppSettings() async {}
+  @override
   Future<CommitOutcome> commit(RegistrationDraft draft) {
     drafts.add(draft);
     return (commitCall = Completer()).future;

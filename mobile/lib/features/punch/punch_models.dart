@@ -189,6 +189,10 @@ enum SelfieProblem {
   noFace('Não encontrei um rosto na foto. Fique de frente para a câmera, em um lugar iluminado, e tente de novo.'),
   manyFaces('Há mais de um rosto na foto. A selfie precisa ser só sua.'),
   tooLarge('A foto ficou grande demais para enviar. Tente de novo.'),
+  cameraDenied('Você não permitiu o uso da câmera. Sem a foto, o ponto não pode ser registrado.'),
+  noCamera('Não encontramos um app de câmera neste celular.'),
+  checkFailed('Não foi possível conferir a foto agora. Tente de novo.'),
+  unreadable('Não foi possível ler a foto tirada. Tente de novo.'),
   unavailable('Não foi possível usar a câmera agora.');
 
   const SelfieProblem(this.message);
@@ -197,10 +201,16 @@ enum SelfieProblem {
 
 @immutable
 class SelfieResult {
-  const SelfieResult.ok(Uint8List this.bytes) : problem = null;
-  const SelfieResult.failed(SelfieProblem this.problem) : bytes = null;
+  const SelfieResult.ok(Uint8List this.bytes)
+      : problem = null,
+        detail = null;
+  const SelfieResult.failed(SelfieProblem this.problem, {this.detail}) : bytes = null;
   final Uint8List? bytes;
   final SelfieProblem? problem;
+
+  /// Código curto do erro técnico (ex.: "picker:no_available_camera"), para
+  /// diagnóstico. Nunca leva imagem, caminho de arquivo ou dado pessoal.
+  final String? detail;
 }
 
 /// Falhas ao falar com o servidor, já traduzidas para a tela.
@@ -246,7 +256,12 @@ abstract interface class LocationSource {
 
 /// Porta da câmera frontal + checagem de rosto no aparelho.
 abstract interface class SelfieCamera {
+  /// Pede a permissão da câmera (se preciso), abre a câmera frontal e confere
+  /// que há um rosto.
   Future<SelfieResult> capture();
+
+  /// Abre a tela de configurações do app (para liberar câmera ou localização).
+  Future<void> openSettings();
 }
 
 /// Um aviso agendado para o horário da escala.

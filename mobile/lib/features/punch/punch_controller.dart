@@ -166,9 +166,12 @@ class PunchController extends ChangeNotifier {
   Future<PhotoResult> takePhoto() async {
     final shot = await _d.camera.capture();
     final bytes = shot.bytes;
-    if (bytes == null) return PhotoResult.failed(shot.problem ?? SelfieProblem.unavailable);
+    if (bytes == null) return PhotoResult.failed(shot.problem ?? SelfieProblem.unavailable, detail: shot.detail);
     return PhotoResult.ok(CapturedPhoto(at: _d.now(), bytes: bytes));
   }
+
+  /// Configurações do app no celular (câmera ou localização negadas).
+  Future<void> openAppSettings() => _d.camera.openSettings();
 
   /// 3. Grava: cria o ponto com a localização e, em seguida, confirma com a
   /// foto. Só diz que deu certo depois da confirmação do servidor.
