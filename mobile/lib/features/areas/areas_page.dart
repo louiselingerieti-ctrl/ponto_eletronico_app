@@ -14,7 +14,7 @@ class AreasPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = AppScope.backendOf(context);
     final cfg = b.areaConfig;
-    return PageBody(children: [
+    return PageBody(onRefresh: AppScope.of(context).refresh, children: [
       const PageIntro('Minhas áreas', 'Locais autorizados pela sua empresa'),
       const DemoDataNotice(),
       Surface(

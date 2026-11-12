@@ -218,6 +218,55 @@ class AppServices extends ChangeNotifier {
     return true;
   }
 
+  bool _refreshing = false;
+
+  /// "Puxar para atualizar": busca de novo no servidor a conta, o acesso e o
+  /// ponto de hoje. Devolve o aviso a mostrar se não deu certo (null = ok).
+  /// Falha de rede não mexe em nada; sessão encerrada ou acesso retirado no
+  /// servidor tiram a pessoa do app, com o motivo na tela de login.
+  /// Na demonstração não há o que buscar: as telas já mostram o estado atual.
+  Future<String?> refresh() async {
+    final a = auth;
+    if (a == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return null;
+    }
+    final current = _membership;
+    if (_refreshing || _busy || current == null) return null;
+    _refreshing = true;
+    try {
+      final u = await a.restore();
+      if (u == null) return await _endSession(AuthFailure.sessionExpired);
+      final ms = (await a.memberships()).where((m) => m.usable && m.isEmployee).toList();
+      final same = ms.where((m) => m.tenantId == current.tenantId).firstOrNull;
+      if (same == null) {
+        return await _endSession(AuthFailure.noActiveAccess);
+      }
+      _user = u;
+      _choices = ms;
+      _membership = same;
+      notifyListeners();
+      await punch?.refresh();
+      final e = punch?.error;
+      return e?.message;
+    } on AuthException catch (e) {
+      return switch (e.failure) {
+        AuthFailure.sessionExpired || AuthFailure.accountInactive => await _endSession(e.failure),
+        _ => e.failure.message,
+      };
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// Sai do app porque o servidor encerrou a sessão ou retirou o acesso.
+  Future<String?> _endSession(AuthFailure why) async {
+    await signOut();
+    _failure = why;
+    notifyListeners();
+    return null;
+  }
+
   void chooseMembership(Membership m) {
     if (!_choices.contains(m)) return;
     _membership = m;

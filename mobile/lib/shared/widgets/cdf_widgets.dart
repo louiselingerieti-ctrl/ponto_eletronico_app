@@ -33,8 +33,13 @@ class PageIntro extends StatelessWidget {
 
 /// Rolagem de página com as margens do protótipo.
 class PageBody extends StatelessWidget {
-  const PageBody({super.key, required this.children});
+  const PageBody({super.key, required this.children, this.onRefresh});
   final List<Widget> children;
+
+  /// "Puxar para atualizar": com isto, puxar a página para baixo no topo
+  /// chama [onRefresh], que devolve o aviso a mostrar se não deu certo
+  /// (null = atualizou). Funciona mesmo quando o conteúdo cabe na tela.
+  final Future<String?> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +48,29 @@ class PageBody extends StatelessWidget {
     // Com o menu sobreposto (extendBody), o Scaffold informa a altura dele
     // como padding inferior: o fim do conteúdo nunca fica escondido.
     final bottom = l.pageBottom + MediaQuery.paddingOf(context).bottom;
-    return SingleChildScrollView(
+    final refresh = onRefresh;
+    final scroll = SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(h, 0, h, bottom),
+      physics: refresh == null ? null : const AlwaysScrollableScrollPhysics(),
       // Com o teclado aberto, o campo em foco é rolado para a vista.
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
       child: ContentWidth(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
       ),
+    );
+    if (refresh == null) return scroll;
+    final c = context.cdf;
+    return RefreshIndicator(
+      color: c.orange,
+      backgroundColor: c.paper,
+      onRefresh: () async {
+        final problem = await refresh();
+        if (problem == null || !context.mounted) return;
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(problem)));
+      },
+      child: scroll,
     );
   }
 }
