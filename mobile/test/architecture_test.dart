@@ -97,6 +97,15 @@ void main() {
     expect(m.contains('ACCESS_BACKGROUND_LOCATION'), isFalse);
   });
 
+  test('release: regras do R8 mantêm o ML Kit (checagem de rosto)', () {
+    // Sem elas a checagem quebra só no APK de release (código face:error).
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    expect(gradle.contains('"proguard-rules.pro"'), isTrue);
+    final rules = File('android/app/proguard-rules.pro').readAsStringSync();
+    expect(rules.contains('-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }'), isTrue);
+    expect(rules.contains('-keep class com.google.mlkit.** { *; }'), isTrue);
+  });
+
   test('não desenha relógio/bateria falsos', () {
     for (final f in files) {
       expect(f.readAsStringSync().contains('09:41'), isFalse, reason: rel(f));
