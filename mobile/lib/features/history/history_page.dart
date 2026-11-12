@@ -19,7 +19,7 @@ class HistoryPage extends StatelessWidget {
     for (final d in b.detections) {
       groups.putIfAbsent(DatesPt.dateOnly(d.detectedAt), () => []).add(d);
     }
-    return PageBody(children: [
+    return PageBody(onRefresh: AppScope.of(context).refresh, children: [
       const PageIntro('Meu histórico', 'Detecções e situação de envio'),
       const DemoDataNotice(),
       if (groups.isEmpty)

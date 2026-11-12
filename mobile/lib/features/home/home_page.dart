@@ -32,7 +32,7 @@ class HomePage extends StatelessWidget {
             ? ('${pendingText(pending)} aguardando envio', Lucide.cloudUpload)
             : ('Tudo enviado', Lucide.check);
 
-    return PageBody(children: [
+    return PageBody(onRefresh: AppScope.of(context).refresh, children: [
       PageIntro('${DatesPt.greeting(now)}, ${AppScope.of(context).firstName}.', DatesPt.longDay(now)),
       // Modo real: o ponto de hoje é do servidor. O restante da tela ainda é demonstração.
       if (AppScope.of(context).punch case final punch?) PunchTodayCard(controller: punch),

@@ -17,7 +17,7 @@ class RequestsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = AppScope.backendOf(context);
     final items = repo.list();
-    return PageBody(children: [
+    return PageBody(onRefresh: AppScope.of(context).refresh, children: [
       const PageIntro('Minhas solicitações', 'Relate um problema e acompanhe a resposta.'),
       const DemoDataNotice(),
       PrimaryButton('Nova solicitação',

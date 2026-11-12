@@ -39,7 +39,7 @@ class ProfilePage extends StatelessWidget {
     final pending = b.pendingCount;
     void push(Widget page) =>
         Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
-    return PageBody(children: [
+    return PageBody(onRefresh: AppScope.of(context).refresh, children: [
       PageIntro('Meu perfil', s.fullName),
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
