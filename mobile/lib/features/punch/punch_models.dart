@@ -2,11 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show immutable;
 
-/// Ponto REAL pelo app, em duas etapas feitas na hora:
-///  1. LOCALIZAÇÃO: cria o ponto provisório, que ainda não conta;
-///  2. SELFIE: confirma o ponto. É ela que faz o registro valer.
-/// A localização nunca bloqueia: fora da área, sem área ou sem GPS, o ponto é
-/// aceito e fica sinalizado para o RH. O horário oficial é o do servidor.
+/// Ponto REAL pelo app. Na tela (+ Registrar) a ordem é: validar a
+/// localização atual → tirar a foto → escolher Entrada/Saída → confirmar.
+/// Só na confirmação o app fala com o servidor, em duas chamadas seguidas:
+///  1. POST /v1/me/punches: cria o ponto provisório com a localização;
+///  2. POST /v1/me/punches/{id}/face: a foto confirma o ponto.
+/// Sem localização validada dentro de uma área não há foto nem ponto. O
+/// horário oficial é o do servidor.
 enum PunchKind {
   entry('entrada', 'Entrada'),
   exit('saída', 'Saída');
@@ -95,6 +97,17 @@ class PunchRecord {
   static String _distance(int m) => m >= 1000 ? '${(m / 1000).toStringAsFixed(1).replaceAll('.', ',')} km' : '$m m';
 }
 
+/// Área de trabalho do vínculo, como o servidor informa (centro e raio).
+@immutable
+class WorkArea {
+  const WorkArea({required this.id, required this.name, required this.latitude, required this.longitude, required this.radiusM});
+  final String id;
+  final String name;
+  final double latitude;
+  final double longitude;
+  final int radiusM;
+}
+
 @immutable
 class LinkAttendance {
   const LinkAttendance({
@@ -104,7 +117,7 @@ class LinkAttendance {
     required this.nextKind,
     required this.days,
     required this.punchesToday,
-    required this.hasArea,
+    required this.areas,
     this.establishmentName,
   });
 
@@ -119,17 +132,13 @@ class LinkAttendance {
   /// Hoje e os 6 dias seguintes.
   final List<DayPlan> days;
   final List<PunchRecord> punchesToday;
-  final bool hasArea;
+
+  /// Áreas autorizadas a este vínculo (só as dele, vindas do servidor).
+  final List<WorkArea> areas;
+  bool get hasArea => areas.isNotEmpty;
 
   DayPlan? get today => days.isEmpty ? null : days.first;
 
-  /// Ponto provisório ainda dentro da janela da selfie (para retomar o fluxo).
-  PunchRecord? pendingAt(DateTime nowUtc) {
-    for (final p in punchesToday.reversed) {
-      if (!p.confirmed && p.faceDeadline != null && nowUtc.isBefore(p.faceDeadline!)) return p;
-    }
-    return null;
-  }
 }
 
 @immutable
@@ -153,8 +162,8 @@ class DeviceLocation {
   final bool mock;
 }
 
-/// Por que o aparelho não entregou a localização. Nenhum caso bloqueia o
-/// ponto: ele segue sem coordenadas e fica sinalizado.
+/// Por que o aparelho não entregou a localização. Sem localização validada
+/// não há registro de ponto.
 enum LocationProblem {
   denied('Você não permitiu o acesso à localização.'),
   deniedForever('O acesso à localização está bloqueado nas configurações do aparelho.'),
@@ -253,7 +262,7 @@ class PunchReminder {
   final String companyName;
 
   String get title => 'Hora de registrar a ${kind.lower}';
-  String get body => 'Abra o app para registrar o ponto: localização e selfie. ($companyName)';
+  String get body => 'Abra o app e toque em + Registrar: localização e foto. ($companyName)';
 }
 
 /// Porta dos avisos locais (vibram e aparecem no horário da escala).

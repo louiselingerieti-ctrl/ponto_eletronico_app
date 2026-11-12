@@ -19,8 +19,9 @@ import 'integration/google/google_id_token_source.dart';
 ///   (Android). Sem isso: modo DEMONSTRAÇÃO.
 /// - Com --dart-define=GOOGLE_SERVER_CLIENT_ID=… também: botão "Entrar com
 ///   Google" (só para conta já cadastrada pelo RH).
-/// - No modo real, o PONTO é de verdade: localização (uma leitura, só na
-///   hora do registro) + selfie, com aviso no horário da escala.
+/// - No modo real, o PONTO é de verdade (+ Registrar): valida a localização
+///   (uma leitura, só na hora) → foto → Entrada/Saída → confirmação, com
+///   aviso no horário da escala.
 /// - Histórico de detecções, áreas e solicitações continuam SIMULADOS nos
 ///   dois modos. O registro ainda não é ponto oficial para fins legais.
 void main() {

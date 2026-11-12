@@ -53,12 +53,12 @@ class ProfilePage extends StatelessWidget {
         icon: Lucide.mapPin,
         title: 'Áreas autorizadas',
         subtitle: 'Locais de detecção do seu vínculo',
-        action: TextAction('Consultar áreas', onPressed: () => AppShell.of(context).goTab(AppTab.areas)),
+        action: TextAction('Consultar áreas', onPressed: () => AppShell.of(context).openAreas()),
       ),
       SettingRow(
         icon: Lucide.shieldCheck,
         title: 'Permissões e privacidade',
-        subtitle: 'Localização e detecção em segundo plano',
+        subtitle: 'Localização para detecção de área e foto só ao registrar',
         action: TextAction('Consultar', onPressed: () => push(const PermissionsPage())),
       ),
       SettingRow(

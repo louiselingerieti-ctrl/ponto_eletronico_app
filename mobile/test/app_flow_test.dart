@@ -11,14 +11,14 @@ void main() {
   group('menu inferior', () {
     testWidgets('os cinco destinos funcionam em sequência, na ordem certa', (t) async {
       await pumpApp(t);
-      final labels = ['Início', 'Histórico', 'Solicitar', 'Áreas', 'Perfil'];
+      final labels = ['Início', 'Histórico', 'Registrar', 'Solicitações', 'Perfil'];
       final xs = [for (final l in labels) t.getCenter(find.text(l).last).dx];
       expect(xs, orderedEquals([...xs]..sort()), reason: 'ordem visual');
 
       final titles = {
         'Histórico': 'Meu histórico',
-        'Solicitar': 'Minhas solicitações',
-        'Áreas': 'Minhas áreas',
+        'Registrar': 'Agora, tire sua foto',
+        'Solicitações': 'Minhas solicitações',
         'Perfil': 'Meu perfil',
         'Início': 'Bom dia, Ana.',
       };
@@ -34,31 +34,31 @@ void main() {
       final box = t.getRect(plus);
       // Toque perto do topo do círculo (parte que sobe acima da barra).
       await t.tapAt(Offset(box.center.dx, box.top - 6));
-      await t.pumpAndSettle();
-      expect(find.text('Minhas solicitações').hitTestable(), findsOneWidget);
+      await settleSimulated(t);
+      expect(find.text('Agora, tire sua foto').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('Solicitar continua selecionado no detalhe e no formulário', (t) async {
+    testWidgets('Solicitações continua selecionado no detalhe e no formulário', (t) async {
       await pumpApp(t);
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       await tapText(t, 'Ver solicitação e resposta');
       expect(find.text('Sua solicitação'), findsOneWidget);
-      expect(t.getSemantics(find.bySemanticsLabel('Solicitar')).flagsCollection.isSelected,
+      expect(t.getSemantics(find.bySemanticsLabel('Solicitações')).flagsCollection.isSelected,
           Tristate.isTrue);
       // A partir do detalhe, os outros destinos continuam funcionando.
-      await tapNav(t, 'Áreas');
-      expect(find.text('Minhas áreas').hitTestable(), findsOneWidget);
-      // Voltar para Solicitar mantém o detalhe aberto (estado preservado).
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Perfil');
+      expect(find.text('Meu perfil').hitTestable(), findsOneWidget);
+      // Voltar para Solicitações mantém o detalhe aberto (estado preservado).
+      await tapNav(t, 'Solicitações');
       expect(find.text('Sua solicitação').hitTestable(), findsOneWidget);
       // Tocar de novo na área aberta volta ao início dela.
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       expect(find.text('Minhas solicitações').hitTestable(), findsOneWidget);
     });
 
     testWidgets('voltar do sistema fecha o detalhe antes de sair da área', (t) async {
       await pumpApp(t);
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       await tapText(t, 'Ver solicitação e resposta');
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
@@ -77,11 +77,12 @@ void main() {
     testWidgets('início mostra a última detecção e o pendente; envio só com ACK', (t) async {
       await pumpApp(t);
       expect(find.text('Detecção habilitada'), findsOneWidget);
-      expect(find.text('Entrada na Loja Centro às 08:02'), findsOneWidget);
+      expect(find.textContaining('Entrada detectada às 08:02'), findsOneWidget);
+      expect(find.text('Dentro na última detecção'), findsOneWidget);
       expect(find.text('1 evento aguardando envio'), findsOneWidget);
       expect(find.text('Salvo no aparelho'), findsOneWidget);
 
-      await tapText(t, 'Ver sincronização');
+      await tapText(t, 'Ver detalhes');
       expect(find.text('1 evento pendente'), findsOneWidget);
       await tapText(t, 'Simular envio agora');
       expect(find.text('Tudo enviado'), findsOneWidget);
@@ -94,14 +95,14 @@ void main() {
 
     testWidgets('sem conexão: envio desabilitado e nada vira recebido', (t) async {
       await pumpApp(t);
-      await tapText(t, 'Ver sincronização');
+      await tapText(t, 'Ver detalhes');
       await tapText(t, 'Simular modo offline');
       expect(find.text('Sem internet'), findsOneWidget);
       final send = t.widget<FilledButton>(find.ancestor(
           of: find.text('Simular envio agora'), matching: find.byType(FilledButton)));
       expect(send.onPressed, isNull);
       await tapText(t, 'Voltar ao início');
-      expect(find.text('Sem conexão com a internet'), findsOneWidget);
+      expect(find.text('Sem internet'), findsOneWidget);
       expect(find.text('Salvo no aparelho'), findsOneWidget);
     });
 
@@ -117,17 +118,22 @@ void main() {
       expect(find.text('Revisar permissões'), findsOneWidget);
     });
 
-    testWidgets('áreas mostram a configuração aplicada pelo ciclo do núcleo', (t) async {
+    testWidgets('áreas abrem pelo Início, com Início selecionado, e voltam', (t) async {
       await pumpApp(t);
-      await tapNav(t, 'Áreas');
+      await tapText(t, 'Ver todas');
+      expect(find.text('Minhas áreas'), findsOneWidget);
+      expect(t.getSemantics(find.bySemanticsLabel('Início')).flagsCollection.isSelected, Tristate.isTrue);
       expect(find.text('Configuração aplicada'), findsOneWidget);
       expect(find.text('Loja Centro'), findsOneWidget);
+      await tapText(t, 'Voltar ao início');
+      expect(find.text('Minhas áreas'), findsNothing);
+      expect(find.text('Minha área').hitTestable(), findsOneWidget);
     });
   });
 
   group('solicitações', () {
     Future<void> openForm(WidgetTester t) async {
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       await tapText(t, 'Nova solicitação');
     }
 
@@ -184,7 +190,7 @@ void main() {
       await openForm(t);
       await t.enterText(find.byType(TextFormField), 'não pode se perder');
       await tapNav(t, 'Início');
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       expect(find.text('não pode se perder'), findsOneWidget);
     });
   });
@@ -203,7 +209,7 @@ void main() {
       expect(find.text('Bom dia, Ana.'), findsOneWidget);
 
       // Cria um pedido e sai: a próxima pessoa não herda nada.
-      await tapNav(t, 'Solicitar');
+      await tapNav(t, 'Solicitações');
       await tapText(t, 'Nova solicitação');
       await t.enterText(find.byType(TextFormField), 'pedido que não pode vazar');
       await tapText(t, 'Enviar solicitação de demonstração');
@@ -221,11 +227,11 @@ void main() {
     for (final (w, scale) in [(320.0, 1.0), (320.0, 1.3), (400.0, 1.6)]) {
       testWidgets('sem overflow em $w px com fonte ×$scale', (t) async {
         await pumpApp(t, size: Size(w, 800), textScale: scale);
-        for (final nav in ['Histórico', 'Solicitar', 'Áreas', 'Perfil', 'Início']) {
+        for (final nav in ['Histórico', 'Registrar', 'Solicitações', 'Perfil', 'Início']) {
           await tapNav(t, nav);
           expect(t.takeException(), isNull, reason: nav);
         }
-        await tapNav(t, 'Solicitar');
+        await tapNav(t, 'Solicitações');
         await tapText(t, 'Nova solicitação');
         expect(t.takeException(), isNull, reason: 'formulário');
       });
@@ -233,7 +239,7 @@ void main() {
 
     testWidgets('alvos de toque do menu com pelo menos 48', (t) async {
       await pumpApp(t, size: const Size(320, 800));
-      for (final l in ['Início', 'Histórico', 'Solicitar', 'Áreas', 'Perfil']) {
+      for (final l in ['Início', 'Histórico', 'Registrar', 'Solicitações', 'Perfil']) {
         final r = t.getRect(find.bySemanticsLabel(l));
         expect(r.width >= 48 && r.height >= 48, isTrue, reason: '$l: $r');
       }

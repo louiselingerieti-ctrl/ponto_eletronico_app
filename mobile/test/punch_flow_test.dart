@@ -33,6 +33,9 @@ class FakePunchServer {
   String? faceError;
   int attendanceStatus = 200;
 
+  /// Quantas vezes o envio da foto cai por falta de rede (antes de chegar).
+  int faceDrops = 0;
+
   Map<String, Object?> _day(String date, String kind) => {
         'date': date,
         'kind': kind,
@@ -101,6 +104,10 @@ class FakePunchServer {
           return http.Response(jsonEncode(p), 201, headers: {'content-type': 'application/json; charset=utf-8'});
         }
         final face = RegExp(r'^/v1/me/punches/(p\d+)/face$').firstMatch(path);
+        if (r.method == 'POST' && face != null && faceDrops > 0) {
+          faceDrops--;
+          throw http.ClientException('sem rede');
+        }
         if (r.method == 'POST' && face != null) {
           if (faceError != null) return _error(faceError == 'punch_already_confirmed' ? 409 : 422, faceError!);
           final p = punches.firstWhere((x) => x['id'] == face.group(1));
@@ -122,8 +129,11 @@ class FakeLocation implements LocationSource {
   }
 }
 
+/// PNG 1×1 válido: a prévia da foto consegue mostrar.
+final tinyPng = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+
 class FakeCamera implements SelfieCamera {
-  SelfieResult result = SelfieResult.ok(Uint8List.fromList([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
+  SelfieResult result = SelfieResult.ok(tinyPng);
   int shots = 0;
   @override
   Future<SelfieResult> capture() async {
@@ -171,7 +181,7 @@ void main() {
               companyName: 'Casa do Futuro',
               canPunch: canPunch,
               nextKind: PunchKind.entry,
-              hasArea: true,
+              areas: const [WorkArea(id: 'a1', name: 'Loja Centro', latitude: -23.5, longitude: -46.6, radiusM: 150)],
               punchesToday: punches,
               days: const [
                 DayPlan(date: '2026-11-11', kind: DayKind.work, startsAt: '08:00', endsAt: '17:00'),
@@ -188,7 +198,7 @@ void main() {
       final r = buildReminders(att(), nowDate: '2026-11-11', nowTime: '07:00');
       expect(slots(r), ['entry 2026-11-11 08:00', 'exit 2026-11-11 17:00', 'entry 2026-11-13 22:00', 'exit 2026-11-14 06:00']);
       expect(r.first.title, 'Hora de registrar a entrada');
-      expect(r.first.body, contains('localização e selfie'));
+      expect(r.first.body, contains('+ Registrar: localização e foto'));
       expect({for (final x in r) x.id}.length, r.length, reason: 'ids únicos');
     });
 
@@ -232,6 +242,7 @@ void main() {
       expect(a.faceWindowSeconds, 300);
       final l = a.links.single;
       expect([l.companyName, l.establishmentName, l.canPunch, l.nextKind, l.hasArea], ['Casa do Futuro', 'Loja Centro', true, PunchKind.entry, true]);
+      expect([l.areas.single.name, l.areas.single.latitude, l.areas.single.radiusM], ['Loja Centro', -23.5, 150]);
       expect(l.today!.summary, '08:00 às 17:00');
       expect(l.days[3].summary, 'Folga');
       expect(server.requests.single.headers.containsKey('origin'), isFalse, reason: 'leitura não precisa de Origin');
@@ -293,7 +304,7 @@ void main() {
     });
   });
 
-  group('pela tela', () {
+  group('+ Registrar pela tela', () {
     Future<(AppServices, FakePunchServer, FakeLocation, FakeCamera, FakeReminders)> pumpReal(WidgetTester t, {void Function(FakePunchServer, FakeLocation, FakeCamera, FakeReminders)? setup, bool dark = false}) async {
       t.view.physicalSize = const Size(400, 1500);
       t.view.devicePixelRatio = 1;
@@ -305,6 +316,7 @@ void main() {
       final reminders = FakeReminders();
       setup?.call(server, location, camera, reminders);
       final store = MemorySessionStore();
+      var ids = 0;
       final s = AppServices(
         now: () => demoNow,
         auth: BackendAuthGateway(baseUrl: base, store: store, client: auth.client),
@@ -314,7 +326,7 @@ void main() {
           camera: camera,
           reminders: reminders,
           now: () => server.now,
-          newId: () => 'evt-${server.punches.length + 1}',
+          newId: () => 'evt-${++ids}',
         ),
       );
       addTearDown(s.dispose);
@@ -327,110 +339,226 @@ void main() {
       return (s, server, location, camera, reminders);
     }
 
-    testWidgets('início mostra a escala de hoje e o botão do próximo ponto', (t) async {
+    Iterable<http.Request> writes(FakePunchServer s) => s.requests.where((r) => r.method == 'POST');
+
+    /// Botão cujo texto também é o título da tela: toca o último (o botão).
+    Future<void> press(WidgetTester t, String label) async {
+      final f = find.text(label).last;
+      await t.ensureVisible(f);
+      await t.pumpAndSettle();
+      await t.tap(f);
+      await settleSimulated(t);
+    }
+
+    Future<void> toConfirm(WidgetTester t, {String kind = 'Entrada'}) async {
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
+      await tapText(t, 'Usar esta foto');
+      await chooseKind(t, kind);
+    }
+
+    testWidgets('início mostra a escala de hoje, a área real e o atalho para registrar', (t) async {
       await pumpReal(t);
       expect(find.text('Seu ponto hoje'), findsOneWidget);
       expect(find.text('Escala de hoje: 08:00 às 17:00'), findsOneWidget);
       expect(find.text('Nenhum ponto registrado hoje.'), findsOneWidget);
-      expect(find.text('Registrar entrada'), findsOneWidget);
+      expect(find.text('Minha área'), findsOneWidget);
+      expect(find.text('Cadastrada pela empresa'), findsOneWidget);
       expect(find.text('Ativar avisos'), findsOneWidget);
+      await tapText(t, 'Registrar ponto');
+      expect(find.text('Agora, tire sua foto').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('registra a entrada: localização, depois selfie, e o ponto passa a valer', (t) async {
+    testWidgets('ordem obrigatória: localização → foto → Entrada/Saída → confirmar; só a confirmação grava', (t) async {
       final (_, server, location, camera, _) = await pumpReal(t);
-      await tapText(t, 'Registrar entrada');
-      expect(find.text('Dentro de Loja Centro'), findsOneWidget);
-      expect(find.text('Tirar selfie'), findsOneWidget);
-      expect(find.textContaining('Você tem até as'), findsOneWidget);
-      expect(server.punches.single['status'], 'pending_face');
+      await tapNav(t, 'Registrar');
+      expect(find.text('Agora, tire sua foto'), findsOneWidget);
+      expect(find.text('Loja Centro · consulta deste registro'), findsOneWidget);
       expect(location.reads, 1);
+      expect(camera.shots, 0, reason: 'a câmera só abre com o toque');
 
-      await tapText(t, 'Tirar selfie');
+      await tapText(t, 'Tirar foto');
+      expect(find.text('Confira sua foto'), findsOneWidget);
+      expect(find.textContaining('Nenhum ponto foi salvo ainda.'), findsOneWidget);
+      await tapText(t, 'Usar esta foto');
+      expect(find.text('Qual registro deseja fazer?'), findsOneWidget);
+      expect(find.text('Pela sequência de hoje, o próximo previsto é a entrada.'), findsOneWidget);
+      await chooseKind(t, 'Entrada');
+      expect(find.text('Confirmar entrada'), findsWidgets);
+      expect(writes(server), isEmpty, reason: 'nada é gravado antes de confirmar');
+
+      await press(t, 'Confirmar entrada');
       expect(find.text('Entrada registrada'), findsOneWidget);
-      expect(find.text('Horário oficial do servidor.'), findsOneWidget);
+      expect(find.text('Recebido pelo servidor'), findsWidgets);
       expect(server.punches.single['status'], 'confirmed');
-      expect(camera.shots, 1);
+      expect(server.punches.single['kind'], 'entry');
+      expect(writes(server).map((r) => r.url.path), ['/v1/me/punches', '/v1/me/punches/p1/face']);
+      expect((jsonDecode(writes(server).first.body) as Map)['location'], {'latitude': -23.4996, 'longitude': -46.6, 'accuracyM': 12, 'mock': false});
 
-      await tapText(t, 'Concluir');
+      await tapText(t, 'Voltar ao início');
       expect(find.textContaining('Entrada às'), findsOneWidget);
-      expect(find.text('Registrar saída'), findsOneWidget);
+      await tapNav(t, 'Histórico');
+      expect(find.text('Entrada registrada').hitTestable(), findsOneWidget);
     });
 
-    testWidgets('fora da área e com GPS simulado: o ponto é aceito e a tela avisa que fica sinalizado', (t) async {
-      await pumpReal(t, setup: (s, l, _, _) {
-        s
-          ..locationStatus = 'outside'
-          ..distanceM = 820;
-        l.result = const LocationResult.ok(DeviceLocation(latitude: -23.49, longitude: -46.6, accuracyM: 30, mock: true));
+    testWidgets('saída: a pessoa escolhe e o servidor recebe o tipo escolhido', (t) async {
+      final (_, server, _, _, _) = await pumpReal(t);
+      await toConfirm(t, kind: 'Saída');
+      await press(t, 'Confirmar saída');
+      expect(find.text('Saída registrada'), findsOneWidget);
+      expect(server.punches.single['kind'], 'exit');
+    });
+
+    testWidgets('alterar tipo de registro volta para a escolha', (t) async {
+      await pumpReal(t);
+      await toConfirm(t);
+      await tapText(t, 'Alterar tipo de registro');
+      expect(find.text('Qual registro deseja fazer?'), findsOneWidget);
+    });
+
+    testWidgets('fora da área: bloqueia câmera e registro; tentar de novo valida outra vez', (t) async {
+      final (_, server, location, camera, _) = await pumpReal(t, setup: (_, l, _, _) {
+        l.result = const LocationResult.ok(DeviceLocation(latitude: -23.49, longitude: -46.6, accuracyM: 30));
       });
-      await tapText(t, 'Registrar entrada');
-      expect(find.text('Fora da área de trabalho (a 820 m de Loja Centro)'), findsOneWidget);
-      expect(find.textContaining('fica sinalizado para o RH avaliar'), findsOneWidget);
-      expect(find.textContaining('a localização é simulada'), findsOneWidget);
-      await tapText(t, 'Tirar selfie');
-      expect(find.text('Entrada registrada'), findsOneWidget);
+      await tapNav(t, 'Registrar');
+      expect(find.text('Não foi possível continuar'), findsOneWidget);
+      expect(find.text('Você está fora da área'), findsOneWidget);
+      expect(find.textContaining('Você está a 1,1 km de Loja Centro.'), findsOneWidget);
+      expect(find.text('Tirar foto'), findsNothing);
+      expect(find.text('Relatar um problema'), findsOneWidget);
+      expect(camera.shots, 0);
+      expect(writes(server), isEmpty);
+
+      location.result = const LocationResult.ok(DeviceLocation(latitude: -23.4996, longitude: -46.6, accuracyM: 12));
+      await tapText(t, 'Tentar novamente');
+      expect(find.text('Agora, tire sua foto'), findsOneWidget);
+      expect(location.reads, 2);
     });
 
-    testWidgets('localização negada não impede: o ponto segue sem ela', (t) async {
-      final (_, server, _, _, _) = await pumpReal(t, setup: (_, l, _, _) => l.result = const LocationResult.failed(LocationProblem.denied));
-      await tapText(t, 'Registrar entrada');
-      expect(find.text('Sem localização do aparelho'), findsOneWidget);
-      expect(find.textContaining('Você não permitiu o acesso à localização.'), findsOneWidget);
-      expect((jsonDecode(server.requests.last.body) as Map)['location'], isNull);
-      await tapText(t, 'Tirar selfie');
-      expect(find.text('Entrada registrada'), findsOneWidget);
+    for (final (name, result, title) in [
+      ('negada', const LocationResult.failed(LocationProblem.denied), 'Permita a localização'),
+      ('bloqueada', const LocationResult.failed(LocationProblem.deniedForever), 'Permita a localização'),
+      ('desligada', const LocationResult.failed(LocationProblem.serviceOff), 'Ligue a localização'),
+      ('sem sinal', const LocationResult.failed(LocationProblem.timeout), 'Localização indisponível'),
+      ('imprecisa', const LocationResult.ok(DeviceLocation(latitude: -23.4996, longitude: -46.6, accuracyM: 400)), 'Localização imprecisa'),
+      ('sem precisão informada', const LocationResult.ok(DeviceLocation(latitude: -23.4996, longitude: -46.6)), 'Localização imprecisa'),
+    ]) {
+      testWidgets('localização $name: não avança para a foto e nada é enviado', (t) async {
+        final (_, server, _, camera, _) = await pumpReal(t, setup: (_, l, _, _) => l.result = result);
+        await tapNav(t, 'Registrar');
+        expect(find.text(title), findsOneWidget);
+        expect(find.text('Tirar foto'), findsNothing);
+        expect(camera.shots, 0);
+        expect(writes(server), isEmpty);
+      });
+    }
+
+    testWidgets('sem área cadastrada: bloqueia sem nem ler o GPS', (t) async {
+      final (_, server, location, _, _) = await pumpReal(t, setup: (s, _, _, _) => s.hasArea = false);
+      expect(find.textContaining('ainda não cadastrou a área de trabalho'), findsWidgets);
+      await tapNav(t, 'Registrar');
+      expect(find.text('Área de trabalho não cadastrada'), findsOneWidget);
+      expect(location.reads, 0);
+      expect(writes(server), isEmpty);
     });
 
-    testWidgets('selfie sem rosto: avisa e deixa tentar de novo; desistir da câmera não mostra erro', (t) async {
+    testWidgets('relatar um problema abre a nova solicitação', (t) async {
+      await pumpReal(t, setup: (_, l, _, _) => l.result = const LocationResult.failed(LocationProblem.denied));
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Relatar um problema');
+      expect(find.text('Conte o que aconteceu.').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('foto sem rosto avisa; desistir da câmera não é erro; câmera indisponível bloqueia', (t) async {
       final (_, server, _, camera, _) = await pumpReal(t, setup: (_, _, c, _) => c.result = const SelfieResult.failed(SelfieProblem.noFace));
-      await tapText(t, 'Registrar entrada');
-      await tapText(t, 'Tirar selfie');
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
       expect(find.textContaining('Não encontrei um rosto na foto'), findsOneWidget);
-      expect(server.punches.single['status'], 'pending_face');
+      expect(find.text('Usar esta foto'), findsNothing);
 
       camera.result = const SelfieResult.failed(SelfieProblem.cancelled);
-      await tapText(t, 'Tirar selfie');
+      await tapText(t, 'Tirar foto');
       expect(find.textContaining('Não encontrei um rosto'), findsNothing);
       expect(find.text('A selfie não foi tirada.'), findsNothing);
 
-      camera.result = SelfieResult.ok(Uint8List.fromList([0xff, 0xd8, 0xff]));
-      await tapText(t, 'Tirar selfie');
-      expect(find.text('Entrada registrada'), findsOneWidget);
+      camera.result = const SelfieResult.failed(SelfieProblem.unavailable);
+      await tapText(t, 'Tirar foto');
+      expect(find.text('Câmera indisponível'), findsOneWidget);
+      camera.result = SelfieResult.ok(tinyPng);
+      await tapText(t, 'Tentar novamente');
+      expect(find.text('Confira sua foto'), findsOneWidget);
+      expect(writes(server), isEmpty);
     });
 
-    testWidgets('janela da selfie esgotada: o provisório não vale e é preciso registrar de novo', (t) async {
-      final (_, server, _, camera, _) = await pumpReal(t);
-      await tapText(t, 'Registrar entrada');
+    testWidgets('tirar outra foto abre a câmera de novo', (t) async {
+      final (_, _, _, camera, _) = await pumpReal(t);
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
+      await tapText(t, 'Tirar outra foto');
+      expect(camera.shots, 2);
+      expect(find.text('Confira sua foto'), findsOneWidget);
+    });
+
+    testWidgets('validade: localização antiga volta à primeira etapa, sem abrir a câmera', (t) async {
+      final (_, server, location, camera, _) = await pumpReal(t);
+      await tapNav(t, 'Registrar');
       server.now = server.now.add(const Duration(minutes: 6));
-      await tapText(t, 'Tirar selfie');
-      expect(find.text('O tempo para a selfie acabou'), findsOneWidget);
-      expect(camera.shots, 0, reason: 'nem abre a câmera');
-      expect(server.punches.single['status'], 'pending_face');
-      await tapText(t, 'Registrar de novo');
-      expect(find.text('Tirar selfie'), findsOneWidget);
-      expect(server.punches, hasLength(2));
+      await tapText(t, 'Tirar foto');
+      expect(find.text('A validação expirou'), findsOneWidget);
+      expect(camera.shots, 0);
+      await tapText(t, 'Tentar novamente');
+      expect(find.text('Agora, tire sua foto'), findsOneWidget);
+      expect(location.reads, 2);
     });
 
-    testWidgets('fechar antes da selfie: o início avisa que falta a selfie e retoma o MESMO ponto', (t) async {
-      final (s, server, location, _, _) = await pumpReal(t);
-      await tapText(t, 'Registrar entrada');
-      await t.tap(find.byType(BackButton));
-      await t.pumpAndSettle();
-      await s.punch!.refresh();
-      await t.pumpAndSettle();
-      expect(find.text('Falta a selfie da entrada para o ponto valer'), findsOneWidget);
-      await tapText(t, 'Tirar a selfie da entrada');
-      expect(find.text('Tirar selfie'), findsOneWidget);
-      expect(server.punches, hasLength(1), reason: 'não cria outro ponto');
-      expect(location.reads, 1);
+    testWidgets('validade também na confirmação: nada é gravado com evidência vencida', (t) async {
+      final (_, server, _, _, _) = await pumpReal(t);
+      await toConfirm(t);
+      server.now = server.now.add(const Duration(minutes: 6));
+      await press(t, 'Confirmar entrada');
+      expect(find.text('A validação expirou'), findsOneWidget);
+      expect(writes(server), isEmpty);
     });
 
-    testWidgets('servidor recusa a etapa 1 (ponto repetido em menos de um minuto): nada é registrado', (t) async {
+    testWidgets('queda de rede ao enviar a foto: tentar de novo usa o MESMO ponto, sem duplicar', (t) async {
+      final (_, server, _, _, _) = await pumpReal(t, setup: (s, _, _, _) => s.faceDrops = 1);
+      await toConfirm(t);
+      await press(t, 'Confirmar entrada');
+      expect(find.textContaining('O ponto ainda não foi registrado.'), findsOneWidget);
+      expect(find.text('Entrada registrada'), findsNothing);
+      await tapText(t, 'Tentar de novo: confirmar entrada');
+      expect(find.text('Entrada registrada'), findsOneWidget);
+      expect(server.punches, hasLength(1));
+      expect(writes(server).where((r) => r.url.path == '/v1/me/punches'), hasLength(1));
+    });
+
+    testWidgets('servidor recusa (ponto repetido em menos de um minuto): avisa e não registra', (t) async {
       final (_, server, _, _, _) = await pumpReal(t, setup: (s, _, _, _) => s.registerError = 'punch_too_soon');
-      await tapText(t, 'Registrar entrada');
+      await toConfirm(t);
+      await press(t, 'Confirmar entrada');
       expect(find.textContaining('Você acabou de registrar um ponto'), findsOneWidget);
-      expect(find.text('Nenhum ponto foi registrado.'), findsOneWidget);
       expect(server.punches, isEmpty);
+    });
+
+    testWidgets('servidor recusa a foto: volta para tirar outra', (t) async {
+      await pumpReal(t, setup: (s, _, _, _) => s.faceError = 'invalid_selfie');
+      await toConfirm(t);
+      await press(t, 'Confirmar entrada');
+      expect(find.text('Agora, tire sua foto'), findsOneWidget);
+      expect(find.text('O servidor não aceitou a foto. Tire outra selfie.'), findsOneWidget);
+    });
+
+    testWidgets('sair de + Registrar descarta a sessão; voltar recomeça pela localização; cancelar volta ao início', (t) async {
+      final (_, server, location, _, _) = await pumpReal(t);
+      await tapNav(t, 'Registrar');
+      await tapText(t, 'Tirar foto');
+      await tapNav(t, 'Histórico');
+      await tapNav(t, 'Registrar');
+      expect(find.text('Agora, tire sua foto'), findsOneWidget, reason: 'a foto anterior não vale');
+      expect(location.reads, 2);
+      await tapText(t, 'Cancelar registro');
+      expect(find.text('Bom dia, Ana.').hitTestable(), findsOneWidget);
+      expect(writes(server), isEmpty);
     });
 
     testWidgets('avisos: só agenda depois de a pessoa ativar; sair apaga os avisos do aparelho', (t) async {
@@ -455,29 +583,37 @@ void main() {
       expect(reminders.scheduled, isEmpty);
     });
 
-    testWidgets('conta sem vínculo, empresa desativada, sem área e falha ao carregar', (t) async {
+    testWidgets('conta sem vínculo: o início explica e o + Registrar bloqueia', (t) async {
       await pumpReal(t, setup: (s, _, _, _) => s.links = []);
       expect(find.textContaining('ainda não está ligada a um vínculo ativo'), findsOneWidget);
-      expect(find.text('Registrar entrada'), findsNothing);
+      await tapNav(t, 'Registrar');
+      expect(find.text('Sem vínculo ativo'), findsOneWidget);
     });
 
-    testWidgets('empresa desativada não oferece o botão; sem área avisa que não há conferência de local', (t) async {
-      await pumpReal(t, setup: (s, _, _, _) {
-        s
-          ..canPunch = false
-          ..hasArea = false;
-      });
-      expect(find.text('Registrar entrada'), findsNothing);
+    testWidgets('empresa desativada: sem atalho no início e o + Registrar bloqueia', (t) async {
+      await pumpReal(t, setup: (s, _, _, _) => s.canPunch = false);
       expect(find.textContaining('A empresa está desativada no sistema'), findsOneWidget);
-      expect(find.textContaining('ainda não cadastrou a área de trabalho'), findsOneWidget);
+      await tapNav(t, 'Registrar');
+      expect(find.text('Empresa desativada'), findsOneWidget);
     });
 
-    testWidgets('falha ao carregar a jornada: mensagem e "Tentar de novo"', (t) async {
+    testWidgets('falha ao carregar a jornada: o registro não valida; "Tentar de novo" recarrega', (t) async {
       final (_, server, _, _, _) = await pumpReal(t, setup: (s, _, _, _) => s.attendanceStatus = 500);
       expect(find.textContaining('O servidor não respondeu como esperado'), findsOneWidget);
+      await tapNav(t, 'Registrar');
+      expect(find.text('Sem conexão com o servidor'), findsOneWidget);
       server.attendanceStatus = 200;
+      await tapNav(t, 'Início');
       await tapText(t, 'Tentar de novo');
-      expect(find.text('Registrar entrada'), findsOneWidget);
+      expect(find.text('Minha área'), findsOneWidget);
+    });
+
+    testWidgets('áreas reais: nome e raio, sem coordenadas', (t) async {
+      await pumpReal(t);
+      await tapText(t, 'Ver todas');
+      expect(find.text('Minhas áreas'), findsOneWidget);
+      expect(find.textContaining('a até 150 m do centro desta área'), findsOneWidget);
+      expect(find.textContaining('-23.5'), findsNothing);
     });
 
     for (final dark in [false, true]) {
@@ -485,10 +621,16 @@ void main() {
         final suffix = dark ? 'escuro' : 'claro';
         await pumpReal(t, dark: dark);
         await capture(t, 'ponto-1-inicio-$suffix');
-        await tapText(t, 'Registrar entrada');
-        await capture(t, 'ponto-2-selfie-$suffix');
-        await tapText(t, 'Tirar selfie');
-        await capture(t, 'ponto-3-confirmado-$suffix');
+        await tapNav(t, 'Registrar');
+        await capture(t, 'ponto-2-foto-$suffix');
+        await tapText(t, 'Tirar foto');
+        await capture(t, 'ponto-3-conferir-$suffix');
+        await tapText(t, 'Usar esta foto');
+        await capture(t, 'ponto-4-tipo-$suffix');
+        await chooseKind(t, 'Entrada');
+        await capture(t, 'ponto-5-confirmar-$suffix');
+        await press(t, 'Confirmar entrada');
+        await capture(t, 'ponto-6-registrado-$suffix');
       });
     }
   });

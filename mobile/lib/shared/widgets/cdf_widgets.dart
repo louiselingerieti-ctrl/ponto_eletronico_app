@@ -162,8 +162,9 @@ enum BadgeTone { ok, pending }
 
 /// Selo de estado: sempre com texto e ícone (não depende só de cor).
 class StatusBadge extends StatelessWidget {
-  const StatusBadge(this.text, {super.key, required this.tone, this.small = false, this.icon});
+  const StatusBadge(this.text, {super.key, required this.tone, this.small = false, this.icon, this.alignment = Alignment.centerLeft});
   final String text;
+  final Alignment alignment;
   final BadgeTone tone;
   final bool small;
   final IconData? icon;
@@ -174,7 +175,7 @@ class StatusBadge extends StatelessWidget {
     final ok = tone == BadgeTone.ok;
     final fg = ok ? c.success : c.warn;
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: alignment,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(

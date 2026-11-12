@@ -9,12 +9,12 @@ import 'support.dart';
 void main() {
   setUpAll(loadAppFonts);
 
-  const titles = ['Bom dia, Ana.', 'Meu histórico', 'Minhas solicitações', 'Minhas áreas', 'Meu perfil'];
-  const navs = ['Início', 'Histórico', 'Solicitar', 'Áreas', 'Perfil'];
+  const titles = ['Bom dia, Ana.', 'Meu histórico', 'Agora, tire sua foto', 'Minhas solicitações', 'Meu perfil'];
+  const navs = ['Início', 'Histórico', 'Registrar', 'Solicitações', 'Perfil'];
 
   Future<void> swipe(WidgetTester t, {required bool toNext}) async {
     await t.fling(find.byType(PageView), Offset(toNext ? -300 : 300, 0), 1200);
-    await t.pumpAndSettle();
+    await settleSimulated(t);
   }
 
   bool selected(WidgetTester t, String nav) =>
@@ -47,32 +47,33 @@ void main() {
     expect(find.text('Meu histórico').hitTestable(), findsOneWidget);
     // Deslizar a partir dali segue a ordem do menu.
     await swipe(t, toNext: true);
-    expect(find.text('Minhas solicitações').hitTestable(), findsOneWidget);
+    expect(find.text('Agora, tire sua foto').hitTestable(), findsOneWidget);
   });
 
   testWidgets('dentro do detalhe, deslizar não troca de área', (t) async {
     await pumpApp(t);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Ver solicitação e resposta');
     expect(find.text('Sua solicitação').hitTestable(), findsOneWidget);
     await swipe(t, toNext: true);
     expect(find.text('Sua solicitação').hitTestable(), findsOneWidget);
-    expect(selected(t, 'Solicitar'), isTrue);
+    expect(selected(t, 'Solicitações'), isTrue);
     // Ao voltar para a lista, deslizar volta a funcionar.
     await t.binding.handlePopRoute();
     await t.pumpAndSettle();
     await swipe(t, toNext: true);
-    expect(find.text('Minhas áreas').hitTestable(), findsOneWidget);
+    expect(find.text('Meu perfil').hitTestable(), findsOneWidget);
   });
 
   testWidgets('o rascunho do formulário sobrevive a deslizar entre outras áreas', (t) async {
     await pumpApp(t);
-    await tapNav(t, 'Solicitar');
+    await tapNav(t, 'Solicitações');
     await tapText(t, 'Nova solicitação');
     await t.enterText(find.byType(TextFormField), 'rascunho que não pode sumir');
     await tapNav(t, 'Início');
     await swipe(t, toNext: true); // Histórico
-    await swipe(t, toNext: true); // Solicitar
+    await swipe(t, toNext: true); // Registrar
+    await swipe(t, toNext: true); // Solicitações
     expect(find.text('rascunho que não pode sumir'), findsOneWidget);
   });
 

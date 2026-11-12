@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../demo/demo_backend.dart';
+import '../demo/demo_registration.dart';
 import '../features/punch/punch_controller.dart';
+import '../features/punch/punch_registration.dart';
+import '../features/registration/registration_controller.dart';
 import '../features/session/session_models.dart';
 
 /// Sessão do app em dois modos EXPLÍCITOS (nunca há troca silenciosa):
@@ -23,6 +26,17 @@ class AppServices extends ChangeNotifier {
   /// Ponto REAL (localização + selfie). Só existe no modo real e quando o
   /// build trouxe os adaptadores do aparelho; na demonstração é null.
   final PunchController? punch;
+
+  /// + Registrar: localização → foto → Entrada/Saída → confirmação. Real com
+  /// [punch]; simulado na demonstração; indisponível (porta null) no modo
+  /// real sem os adaptadores do aparelho. Nunca mistura os dois.
+  late final RegistrationController registration = RegistrationController(
+    switch ((realMode, punch)) {
+      (false, _) => DemoRegistrationPort(() => _backend),
+      (true, final PunchController p?) => PunchRegistrationPort(p, now: p.now),
+      (true, null) => null,
+    },
+  );
 
   final DateTime Function()? _now;
   final AuthGateway? auth;
@@ -277,6 +291,7 @@ class AppServices extends ChangeNotifier {
   /// Sai: encerra a sessão no servidor quando possível, apaga do aparelho e
   /// descarta os dados da demonstração (ver BackendAuthGateway.signOut).
   Future<void> signOut() async {
+    registration.discard();
     await auth?.signOut();
     await _forgetGoogle();
     await punch?.reset();
@@ -296,6 +311,7 @@ class AppServices extends ChangeNotifier {
 
   @override
   void dispose() {
+    registration.dispose();
     punch?.dispose();
     _backend.dispose();
     super.dispose();

@@ -64,6 +64,18 @@ class DetectionView {
   String get title => isEntry ? 'Entrada detectada' : 'Saída detectada';
 }
 
+/// Ponto registrado pelo + Registrar na demonstração (localização + foto
+/// simuladas). Fica só em memória, "salvo no aparelho": nada é enviado.
+class ManualPunchView {
+  const ManualPunchView({required this.clientId, required this.isEntry, required this.area, required this.at});
+  final String clientId;
+  final bool isEntry;
+  final String area;
+  final DateTime at;
+
+  String get title => isEntry ? 'Entrada manual' : 'Saída manual';
+}
+
 enum AreaConfigView {
   applied('Configuração aplicada', true),
   pending('Configuração pendente', false),
@@ -122,6 +134,27 @@ class DemoBackend extends ChangeNotifier implements RequestsRepository {
 
   bool _sending = false;
   bool get sending => _sending;
+
+  // ---- Pontos do + Registrar (simulados) ----
+
+  final List<ManualPunchView> _manual = [];
+
+  /// Mais recente primeiro.
+  List<ManualPunchView> get manualPunches => List.unmodifiable(_manual.reversed);
+
+  /// Próximo previsto: entrada se o último foi saída (ou se não houve).
+  bool get nextManualIsEntry => _manual.isEmpty || !_manual.last.isEntry;
+
+  /// Grava em memória. A mesma tentativa ([clientId]) não gera dois pontos.
+  ManualPunchView addManualPunch({required bool isEntry, required String area, required String clientId}) {
+    for (final m in _manual) {
+      if (m.clientId == clientId) return m;
+    }
+    final p = ManualPunchView(clientId: clientId, isEntry: isEntry, area: area, at: _now());
+    _manual.add(p);
+    notifyListeners();
+    return p;
+  }
 
   // ---- Semeadura fictícia ----
 

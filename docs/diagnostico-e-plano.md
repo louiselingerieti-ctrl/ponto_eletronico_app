@@ -338,6 +338,53 @@ Pedido da usuária: o mesmo login com Google do portal, também no app.
   mostra o SHA-1 do APK gerado.
 - O workflow não publica em loja nem distribui o APK: só gera o arquivo.
 
+### Relatório v2.0: menu novo e + Registrar em quatro etapas (12/11/2026)
+
+Pedido da usuária, com o relatório "App do colaborador — todas as páginas e
+estados v2.0". **Substitui o fluxo da seção seguinte** (localização cria o
+ponto provisório, selfie em até 5 minutos):
+
+- **Menu:** Início · Histórico · + Registrar · Solicitações · Perfil. Áreas
+  deixa de ser aba: abre pelo Início ("Minha área" → "Ver todas") e pelo
+  Perfil, com Início selecionado.
+- **+ Registrar:** 1. valida a localização ATUAL → 2. foto frontal nova,
+  com prévia ("Usar esta foto" / "Tirar outra foto") → 3. Entrada ou Saída →
+  resumo e confirmação. Sem localização validada não abre câmera; sem foto
+  não escolhe tipo. Nada é enviado antes de confirmar.
+- **Mudança de política (pelo relatório):** fora da área, localização
+  negada/desligada/sem sinal, precisão pior que o raio da área ou empresa
+  sem área cadastrada **bloqueiam** o registro (antes: aceito e
+  sinalizado). "Relatar um problema" abre uma nova solicitação.
+- **Validação no aparelho:** busca a configuração vigente
+  (`GET /v1/me/attendance`, que já traz centro e raio das áreas do vínculo),
+  lê o GPS uma vez e compara a distância com o raio. O servidor continua
+  avaliando a localização por conta própria e pode sinalizar o ponto.
+- **Gravação:** na confirmação, `POST /v1/me/punches` e logo em seguida
+  `POST /v1/me/punches/{id}/face`. Sucesso só depois da resposta do servidor
+  ("Recebido pelo servidor"). Queda de rede: "tentar de novo" reaproveita o
+  mesmo ponto (mesmo `clientEventId`), sem duplicar.
+- **Sessão de registro:** cada sessão tem número; respostas que chegam
+  depois de cancelar, sair da aba ou recomeçar são ignoradas. Sair do
+  + Registrar descarta a sessão; voltar recomeça pela localização. Toque
+  duplo não grava duas vezes.
+- **Validade das evidências:** a janela que o servidor informa para a foto
+  (`faceWindowSeconds`, hoje 5 min). Vencida, volta à etapa 1.
+- **Demonstração:** o mesmo fluxo, todo simulado (sem GPS nem câmera); o
+  ponto fica "salvo no aparelho · aguardando envio" e aparece no Histórico
+  como "Entrada manual".
+- **Backend, APP_TABLET e portal não foram alterados.**
+
+Pendências reais desta etapa:
+
+- **Offline:** sem internet o ponto não é gravado (nem localmente). A fila
+  cifrada de foto + ponto descrita no relatório (seção 8) não existe ainda.
+- **Precisão e idade:** o limite de precisão usado é o raio da área e a
+  validade é a janela da foto; os valores definitivos são decisão de
+  política.
+- Áreas sem área cadastrada bloqueiam o ponto: a empresa precisa cadastrar
+  a área antes de usar o app.
+- Nada disso foi testado em aparelho real (GPS, câmera, precisão).
+
 ### Ponto real pelo app: localização + selfie (11/11/2026)
 
 Pedido da usuária, que **muda decisões anteriores deste documento**: o app

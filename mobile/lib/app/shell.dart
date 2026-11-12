@@ -4,13 +4,18 @@ import '../features/areas/areas_page.dart';
 import '../features/history/history_page.dart';
 import '../features/home/home_page.dart';
 import '../features/profile/profile_page.dart';
+import '../features/registration/register_page.dart';
+import '../features/requests/new_request_page.dart';
 import '../features/requests/requests_page.dart';
 import '../shared/icons/lucide.dart';
 import '../shared/layout/cdf_layout.dart';
 import '../shared/theme/tokens.dart';
+import '../features/registration/registration_controller.dart';
 import 'app_services.dart';
 
-enum AppTab { home, history, requests, areas, profile }
+/// Ordem fixa do menu: Início · Histórico · + Registrar · Solicitações · Perfil.
+/// Áreas não é aba: abre pelo Início (e pelo Perfil) com Início selecionado.
+enum AppTab { home, history, register, requests, profile }
 
 /// Estrutura principal: cabeçalho fixo, cinco áreas com navegação própria
 /// (estado preservado) e menu inferior obrigatório.
@@ -45,10 +50,23 @@ class AppShellState extends State<AppShell> {
   void _onPageChanged(int i) {
     final t = AppTab.values[i];
     if (t == _tab) return;
+    final from = _tab;
     setState(() {
       _tab = t;
       _nestedCanPop = _keys[t]!.currentState?.canPop() ?? false;
     });
+    _registerFollows(from, t, tapped: false);
+  }
+
+  /// + Registrar começa pela localização ao entrar e descarta a sessão ao
+  /// sair (uma gravação em curso termina e o resultado fica guardado).
+  void _registerFollows(AppTab from, AppTab to, {required bool tapped}) {
+    final r = AppScope.of(context).registration;
+    if (from == AppTab.register && to != AppTab.register) r.leave();
+    if (to != AppTab.register) return;
+    // Tocar no + recomeça a validação; chegar deslizando só começa se nada
+    // estiver em andamento.
+    if (tapped || r.step == RegStep.idle) r.begin();
   }
 
   /// Leva o PageView até a área: animação curta para a vizinha; troca direta
@@ -76,16 +94,45 @@ class AppShellState extends State<AppShell> {
   }
 
   /// Toque no menu. Tocar na área já aberta volta ao início dela.
-  void goTab(AppTab t) {
+  void goTab(AppTab t) => _go(t, tapped: false);
+
+  void _go(AppTab t, {required bool tapped}) {
     final nav = _keys[t]!.currentState;
     if (t == _tab && nav != null && nav.canPop()) {
       nav.popUntil((r) => r.isFirst);
     }
+    final from = _tab;
     setState(() {
       _tab = t;
       _nestedCanPop = _keys[t]!.currentState?.canPop() ?? false;
     });
     _showPage(t);
+    _registerFollows(from, t, tapped: tapped);
+  }
+
+  /// Toque no item do menu (inclusive o +).
+  void _tap(AppTab t) => _go(t, tapped: true);
+
+  /// Áreas autorizadas: abre dentro do Início (Início fica selecionado).
+  void openAreas() => _openIn(AppTab.home, const AreasPage());
+
+  /// "Relatar um problema": nova solicitação, dentro de Solicitações.
+  void openNewRequest() => _openIn(AppTab.requests, const NewRequestPage());
+
+  /// Vai para a área e abre a página nela. A área que ainda não foi aberta
+  /// só ganha o seu Navigator depois do próximo quadro.
+  void _openIn(AppTab t, Widget page) {
+    goTab(t);
+    // Troca direta (sem animação): a área precisa existir já no próximo quadro.
+    if (_pages.hasClients && (_pages.page ?? -1).round() != t.index) _pages.jumpToPage(t.index);
+    void push() => _keys[t]!.currentState?.push(MaterialPageRoute<void>(builder: (_) => page));
+    if (_keys[t]!.currentState != null) {
+      push();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) push();
+      });
+    }
   }
 
   /// "Voltar ao início": fecha o que estiver aberto na área atual e vai para
@@ -98,8 +145,8 @@ class AppShellState extends State<AppShell> {
   static Widget _root(AppTab t) => switch (t) {
         AppTab.home => const HomePage(),
         AppTab.history => const HistoryPage(),
+        AppTab.register => const RegisterPage(),
         AppTab.requests => const RequestsPage(),
-        AppTab.areas => const AreasPage(),
         AppTab.profile => const ProfilePage(),
       };
 
@@ -154,7 +201,7 @@ class AppShellState extends State<AppShell> {
             ),
           ]),
         ),
-        bottomNavigationBar: CdfBottomNav(current: _tab, onSelect: goTab),
+        bottomNavigationBar: CdfBottomNav(current: _tab, onSelect: _tap),
       ),
     );
   }
@@ -252,9 +299,9 @@ class BrandHeader extends StatelessWidget {
   }
 }
 
-/// Menu inferior: Início, Histórico, + Solicitar, Áreas, Perfil.
+/// Menu inferior: Início, Histórico, + Registrar, Solicitações, Perfil.
 /// O círculo laranja (52, contorno 4 na cor da superfície) sobe ~24 acima
-/// dos outros ícones; o rótulo "Solicitar" fica na mesma linha dos demais.
+/// dos outros ícones; o rótulo "Registrar" fica na mesma linha dos demais.
 class CdfBottomNav extends StatelessWidget {
   const CdfBottomNav({super.key, required this.current, required this.onSelect});
   final AppTab current;
@@ -273,7 +320,7 @@ class CdfBottomNav extends StatelessWidget {
             icon: icon,
             label: label,
             selected: current == t,
-            center: t == AppTab.requests,
+            center: t == AppTab.register,
             onTap: () => onSelect(t),
           ),
         );
@@ -294,8 +341,8 @@ class CdfBottomNav extends StatelessWidget {
               child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 item(AppTab.home, Lucide.house, 'Início'),
                 item(AppTab.history, Lucide.listChecks, 'Histórico'),
-                item(AppTab.requests, Lucide.plus, 'Solicitar'),
-                item(AppTab.areas, Lucide.mapPin, 'Áreas'),
+                item(AppTab.register, Lucide.plus, 'Registrar'),
+                item(AppTab.requests, Lucide.messageSquare, 'Solicitações'),
                 item(AppTab.profile, Lucide.userRound, 'Perfil'),
               ]),
             ),
@@ -310,7 +357,7 @@ class CdfBottomNav extends StatelessWidget {
           child: Center(
             child: ExcludeSemantics(
               child: GestureDetector(
-                onTap: () => onSelect(AppTab.requests),
+                onTap: () => onSelect(AppTab.register),
                 child: Container(
                   width: 52,
                   height: 52,
@@ -353,7 +400,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.cdf;
-    // O rótulo "Solicitar" é sempre na cor do texto (protótipo); os demais
+    // O rótulo "Registrar" é sempre na cor do texto (protótipo); os demais
     // ficam em cinza quando não selecionados.
     final labelStyle = cdfText(11,
         weight: selected ? 700 : 400,
